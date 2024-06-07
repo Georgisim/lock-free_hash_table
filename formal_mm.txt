@@ -1,0 +1,96 @@
+// types and structures
+structure NodeType {
+Key : KeyType;
+<Mark,Next,Tag> : <boolean,*NodeType,TagType>;
+}
+structure MarkPtrType {
+<Mark,Next,Tag> : <boolean,*NodeType,TagType>;
+}
+// T is the hash array
+// M is the number of hash buckets
+T[M] : MarkPtrType; // Initially <0,null,dontcare>
+
+// Hash function
+h(key:KeyType):0..M-1 { ... }
+
+// Hash table operations
+HashInsert(key:KeyType):boolean {
+// Assuming new node allocations always succeed
+node ← AllocateNode();
+nodeˆ.Key ← key;
+
+if Insert(&T[h(key)],node) return true;
+    FreeNode(node); return false;
+}
+
+HashDelete(key:KeyType):boolean {
+    return Delete(&T[h(key)],key);
+}
+HashSearch(key:KeyType):boolean {
+    return Search(&T[h(key)],key);
+}
+
+// private variables
+prev : *MarkPtrType;
+<pmark,cur,ptag> : MarkPtrType;
+<cmark,next,ctag> : MarkPtrType;
+
+Insert(head:*MarkPtrType,node:*NodeType):boolean {
+    key ← nodeˆ.Key;
+
+    while true {
+A1:
+        if Find(head,key) return false;
+A2:
+        nodeˆ.<Mark,Next> ← <0,cur>;
+A3:
+        if CAS(prev,<0,cur,ptag>,<0,node,ptag+1>)
+            return true;
+    }
+}
+
+Delete(head:*MarkPtrType,key:KeyType):boolean {
+    while true {
+B1:
+        if !Find(head,key) return false;
+B2:
+        if !CAS(&curˆ.<Mark,Next,Tag>,
+        <0,next,ctag>,
+        <1,next,ctag+1>) continue;
+B3:
+        if CAS(prev,<0,cur,ptag>,<0,next,ptag+1>)
+            DeleteNode(cur); else Find(head,key);
+
+        return true;
+    }
+}
+
+Find(head:*MarkPtrType;key:KeyType) : boolean {
+try again:
+    prev ← head;
+D1: <pmark,cur,ptag> ← *prev;
+    while true {
+D2:
+        if cur = null return false;
+D3:
+        <cmark,next,ctag> ← curˆ.<Mark,Next,Tag>;
+D4:
+        ckey ← curˆ.Key;
+D5:
+        if *prev != <0,cur,ptag> goto try again;
+        if !cmark {
+D6:
+            if ckey>=key return ckey = key;
+D7:             prev ← &curˆ.<Mark,Next,Tag>;
+                
+        } else {
+D8:
+        if CAS(prev,<0,cur,ptag>,<0,next,ptag+1>) {
+            DeleteNode(cur); ctag ← ptag+1;
+        } else
+            goto try again;
+        }
+D9:
+        <pmark,cur,ptag> ← <cmark,next,ctag>;
+    }
+}
