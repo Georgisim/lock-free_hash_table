@@ -39,7 +39,7 @@ int main()
     }
 
 
-    if (hashtable_find1(202, &value)) {
+    if (hashtable_find(202, &value)) {
         printf("!Key 2 has value %d\n", value);
     } else {
         printf("!Key 2 not found\n");

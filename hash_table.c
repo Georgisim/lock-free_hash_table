@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+
 #include "freelist.h"
 
 #include "hash_table.h"
@@ -10,7 +13,46 @@
 #define UNMARKED_PTR(p) ((uintptr_t)(p) & ~1)
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
+typedef struct mtag_ptr_s mtag_ptr_t;
+typedef struct node_s node_t;
+
+struct mtag_ptr_s {
+    node_t *ptr;
+    uint64_t tag;
+};
+
+typedef struct node_s {
+    _Atomic(mtag_ptr_t) next;
+
+    int key;
+} node_t;
+
+
+typedef struct {
+    _Atomic(mtag_ptr_t) *head;
+    size_t hash_table_size;
+} hash_table_t;
+
 static hash_table_t g_hash_table;
+
+// Initialize the hash table
+int hashtable_init(size_t hash_table_size)
+{
+    freelist_init(sizeof(node_t), hash_table_size * 2);
+
+    g_hash_table.head = calloc(sizeof(mtag_ptr_t), hash_table_size);
+    if (g_hash_table.head == NULL) {
+        return -1; // Memory allocation failed
+    }
+
+    for (size_t i = 0; i < hash_table_size; i++) {
+        mtag_ptr_t init_head = { .ptr = 0, .tag = i };
+        atomic_store(&g_hash_table.head[i], init_head);
+    }
+
+    g_hash_table.hash_table_size = hash_table_size;
+}
+
 
 // A simple hash function
 size_t hash(int key)
@@ -18,199 +60,105 @@ size_t hash(int key)
     return key % g_hash_table.hash_table_size;
 }
 
-// Initialize the hash table
-int hashtable_init(size_t hash_table_size)
+bool find(int key, mtag_ptr_t *head, mtag_ptr_t **prev,
+        mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
-    freelist_init(sizeof(node_t), hash_table_size * 2);
-
-    g_hash_table.buckets = calloc(sizeof(bucket_t), hash_table_size);
-    if (g_hash_table.buckets == NULL) {
-        return -1; // Memory allocation failed
-    }
-
-    for (size_t i = 0; i < hash_table_size; i++) {
-        tag_ptr_t init_head = { .ptr = 0, .tag = 0 };
-        atomic_store(&g_hash_table.buckets[i].head, init_head);
-    }
-
-    g_hash_table.hash_table_size = hash_table_size;
-}
-
-
-void hashtable_store_keyval(node_t *node, int key, int value)
-{
-    node->key = key;
-    node->value = value;
-}
-
-int hashtable_cmp_key(node_t *node, int key)
-{
-    if(node->key < key) {
-        return -1;
-    } else if(node->key > key) {
-        return 0;
-    }
-}
-
-// Find a key
-int hashtable_find(int key, int* value)
-{
-    size_t index = hash(key);
-    bucket_t *bucket = &g_hash_table.buckets[index];
-
-    tag_ptr_t next, head = atomic_load(&bucket->head);
-    node_t* current = (node_t*)UNMARKED_PTR(head.ptr);
-
-    while (current) {
-        if (current->key == key) {
-            *value = current->value;
-            return 1; // Key found
-        }
-
-        next = atomic_load(&current->next);
-        current = (node_t*)UNMARKED_PTR(head.ptr);
-    }
-
-    return 0; // Key not found
-}
-
-// Find a key
-int hashtable_find1(int key, int* value)
-{
-    size_t index = hash(key);
-    bucket_t *bucket = &g_hash_table.buckets[index];
-
-    uint64_t ctag, ptag;
-    int cmark;
-
-    tag_ptr_t next, head = atomic_load(&bucket->head), prev;
-    node_t* cur = (node_t*)UNMARKED_PTR(head.ptr);
+    int ckey;
 
 try_again:
-    prev = head;
-    // <pmark, cur, ptag> = *prev;
-    while (cur) {
-        //if(*prev != <0,cur,ptag>)
-//            goto try_again;
+    *prev = head;
 
-        if(!MARKED_PTR(cur->next.ptr)) {
-            if (cur->key >= key) {
-                if (cur->key == key) {
-                    *value = cur->value;
-                    return 1; // Key found
-                } else {
-                    return 0;
-                }
-            }
-        } else {
-            /*
-            if(CAS())
-                freelist_free(current);
-                */
+    // *pmark_cur_ptag = *prev; // D1:
+    pmark_cur_ptag->ptr = (*prev)->ptr;
+    pmark_cur_ptag->tag = (*prev)->tag;
 
+    while (UNMARKED_PTR(pmark_cur_ptag->ptr)) {
+        cmark_next_ctag->ptr = pmark_cur_ptag->ptr->next.ptr;
+        cmark_next_ctag->tag = pmark_cur_ptag->ptr->next.tag;
+
+        ckey = pmark_cur_ptag->ptr->key;
+
+        if((*prev)->tag != pmark_cur_ptag->tag || // D5:
+                (*prev)->ptr != UNMARKED_PTR(pmark_cur_ptag->ptr) ||
+                IS_MARKED_PTR((*prev)->ptr)) {
+            goto try_again;
         }
 
-        next = atomic_load(&cur->next);
-        cur = (node_t*)UNMARKED_PTR(next.ptr);
+        if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) { // D5:
+            if(ckey >= key) { // D6:
+                return ckey == key;
+            }
 
-        // ptag = next.tag;
+            (*prev)->ptr = pmark_cur_ptag->ptr->next.ptr; // D7
+            (*prev)->tag = pmark_cur_ptag->ptr->next.tag; // D7
+        } else {
+            // CAS delete
+        }
 
+        pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
+        pmark_cur_ptag->tag = cmark_next_ctag->ptr;
     }
 
-    return 0; // Key not found D2
+    return false; // Key not found D2:
 }
 
-// Insert a key-value pair into the hash table
-int hashtable_insert(int key, int value)
+// Find a key
+bool hashtable_find(int key)
 {
-    node_t *new_node, *current, *prev;
-    tag_ptr_t old_head, new_head, expected;
+    _Atomic(mtag_ptr_t) *head;
+    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
+    mtag_ptr_t *prev;
 
     size_t index = hash(key);
-    bucket_t *bucket = &g_hash_table.buckets[index];
 
-    new_node = freelist_allocate();
+    head = &g_hash_table.head[index];
 
-    hashtable_store_keyval(new_node, key, value);
+    return find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
 
-    while(1) {
-        old_head = atomic_load(&bucket->head);
-        current = (node_t *)UNMARKED_PTR(old_head.ptr);
-
-        prev = NULL;
-
-        while (current && current->key < key) {
-            prev = current;
-            tag_ptr_t next = atomic_load(&current->next);
-            current = (node_t*)UNMARKED_PTR(next.ptr);
-        }
-
-        if (prev) {
-            new_node->next = (tag_ptr_t){ .ptr = current, .tag = old_head.tag + 1 };
-            expected = atomic_load(&prev->next);
-
-            new_head = (tag_ptr_t){ .ptr = new_node, .tag = expected.tag + 1 };
-            if (atomic_compare_exchange_weak(&prev->next, &expected, new_head)) {
-                break;
-            }
-        } else {
-            new_node->next = old_head;
-            new_head = (tag_ptr_t){ .ptr = new_node, .tag = old_head.tag + 1 };
-            if (atomic_compare_exchange_weak(&bucket->head, &old_head, new_head)) {
-                break;
-            }
-        }
-    };
-
-    return 0;
 }
 
-
-
-// Delete a key-value pair
-int hashtable_delete(int key)
+bool hashtable_insert(int key)
 {
+    node_t *node;
+    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
+    mtag_ptr_t *prev;
+
+    _Atomic(mtag_ptr_t) *head;
+
     size_t index = hash(key);
-    bucket_t *bucket = &g_hash_table.buckets[index];
-    node_t *current, *prev;
 
-    tag_ptr_t old_head, new_head, next, expected;
+    head = &g_hash_table.head[index];
 
-    do {
-        old_head = atomic_load(&bucket->head);
-        current = (node_t*)UNMARKED_PTR(old_head.ptr);
-        prev = NULL;
+    node = freelist_allocate();
+    node->key = key;
 
-        while (current && current->key != key) {
-            prev = current;
-            next = atomic_load(&current->next);
-            current = (node_t*)UNMARKED_PTR(next.ptr);
-        }
+    if(find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
+        return false;
+    }
 
-        if (current == NULL) {
-            return 0; // Key not found
-        }
+    node->next.ptr = UNMARKED_PTR(pmark_cur_ptag.ptr); // A2:
+    node->next.tag = 0;
 
-        next = atomic_load(&current->next);
+    prev->ptr = node;
+    prev->tag++;
+/*
+    if(cas() {
 
-        if (prev) {
-            expected = atomic_load(&prev->next);
-            new_head = (tag_ptr_t) { .ptr = MARKED_PTR(next.ptr), .tag = expected.tag + 1 };
-            if (atomic_compare_exchange_weak(&prev->next, &expected, new_head)) {
-                break;
-            }
-        } else {
-            new_head = (tag_ptr_t) { .ptr = MARKED_PTR(next.ptr), .tag = old_head.tag + 1 };
-            if (atomic_compare_exchange_weak(&bucket->head, &old_head, new_head)) {
-                break;
-            }
-        }
-    } while (1);
+    }
+*/
+    return false;
+}
 
-    return 1; // Key deleted
+bool hashtable_delete(mtag_ptr_t *head, int key)
+{
+
 }
 
 void hash_table_destroy(void)
 {
-    freelist_destroy();
+    free(g_hash_table.head);
 }
+
+
+
+
