@@ -89,10 +89,25 @@ try_again:
                 return ckey == key;
             }
 
-            (*prev)->ptr = pmark_cur_ptag->ptr->next.ptr; // D7
-            (*prev)->tag = pmark_cur_ptag->ptr->next.tag; // D7
+            (*prev)->ptr = pmark_cur_ptag->ptr->next.ptr; // D7:
+            (*prev)->tag = pmark_cur_ptag->ptr->next.tag;
         } else {
-            // CAS delete
+            // D3:
+
+            mtag_ptr_t expected_cur = { .ptr = UNMARKED_PTR(pmark_cur_ptag->ptr), .tag = pmark_cur_ptag->tag};
+            mtag_ptr_t new_next = { .ptr = UNMARKED_PTR(cmark_next_ctag->ptr), .tag = pmark_cur_ptag->tag + 1};
+
+            if (atomic_compare_exchange_weak(*prev, &expected_cur, new_next)) {
+                freelist_free(pmark_cur_ptag->ptr);
+                cmark_next_ctag->tag = pmark_cur_ptag->tag;
+
+                pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
+                pmark_cur_ptag->tag = cmark_next_ctag->ptr;
+
+                return true;
+            } else {
+                goto try_again;
+            }
         }
 
         pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
@@ -141,11 +156,15 @@ bool hashtable_insert(int key)
 
     prev->ptr = node;
     prev->tag++;
-/*
-    if(cas() {
 
+    // A3:
+    mtag_ptr_t expected_cur = { .ptr = UNMARKED_PTR(pmark_cur_ptag.ptr), .tag = pmark_cur_ptag.tag};
+    mtag_ptr_t new_next = { .ptr = UNMARKED_PTR(node), .tag = pmark_cur_ptag.tag + 1};
+
+    if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
+        return true;
     }
-*/
+
     return false;
 }
 
