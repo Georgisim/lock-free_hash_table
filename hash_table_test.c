@@ -7,24 +7,59 @@
 // Example usage
 int main()
 {
+    int value;
+
     hashtable_init(100);
 
     // Insert key-value pairs
     hashtable_insert(1, 100);
+
+
     hashtable_insert(2, 200);
+    if (hashtable_find(2, &value)) {
+        printf("Key 2 has value %d\n", value);
+    } else {
+        printf("Key 2 not found\n");
+    }
+
     hashtable_insert(102, 201);
-    hashtable_insert(202, 202);
+
+    if (hashtable_find(2, &value)) {
+        printf("Key 2 has value %d\n", value);
+    } else {
+        printf("Key 2 not found\n");
+    }
+
+
+    if (hashtable_find(102, &value)) {
+        printf("Key 102 has value %d\n", value);
+    } else {
+        printf("Key 102 not found\n");
+    }
+
+
+
+
+
+
+
+
+
+
+
+    hashtable_insert(2342342, 2342342);
+
+
     // Find values
-    int value;
+
     if (hashtable_find(1, &value)) {
         printf("Key 1 has value %d\n", value);
     } else {
-
         printf("Key 1 not found\n");
     }
 
     // Remove a key-value pair
-     hashtable_delete(1);
+     // hashtable_delete(1);
     if (hashtable_find(1, &value)) {
         printf("Key 1 has value %d\n", value);
     } else {
@@ -40,9 +75,9 @@ int main()
 
 
     if (hashtable_find(202, &value)) {
-        printf("!Key 2 has value %d\n", value);
+        printf("Key 202 has value %d\n", value);
     } else {
-        printf("!Key 2 not found\n");
+        printf("Key 202 not found\n");
     }
 
     if (hashtable_find(2342342, &value)) {

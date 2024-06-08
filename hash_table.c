@@ -9,8 +9,9 @@
 
 #include "hash_table.h"
 
-#define MARKED_PTR(p) ((node_t *)((uintptr_t)(p) | 1))
-#define UNMARKED_PTR(p) ((uintptr_t)(p) & ~1)
+
+#define SET_MARK(p, b) ((node_t *)((uintptr_t)(p) | (b)))
+#define GET_PTR(p) ((uintptr_t)(p) & ~1)
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
 typedef struct mtag_ptr_s mtag_ptr_t;
@@ -26,7 +27,6 @@ typedef struct node_s {
 
     int key;
 } node_t;
-
 
 typedef struct {
     _Atomic(mtag_ptr_t) *head;
@@ -60,7 +60,7 @@ size_t hash(int key)
     return key % g_hash_table.hash_table_size;
 }
 
-bool find(int key, mtag_ptr_t *head, mtag_ptr_t **prev,
+static bool find(int key, mtag_ptr_t *head, mtag_ptr_t **prev,
         mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
     int ckey;
@@ -68,41 +68,49 @@ bool find(int key, mtag_ptr_t *head, mtag_ptr_t **prev,
 try_again:
     *prev = head;
 
-    // *pmark_cur_ptag = *prev; // D1:
+    // D1:
     pmark_cur_ptag->ptr = (*prev)->ptr;
     pmark_cur_ptag->tag = (*prev)->tag;
 
-    while (UNMARKED_PTR(pmark_cur_ptag->ptr)) {
-        cmark_next_ctag->ptr = pmark_cur_ptag->ptr->next.ptr;
-        cmark_next_ctag->tag = pmark_cur_ptag->ptr->next.tag;
+    while (GET_PTR(pmark_cur_ptag->ptr)) { // D2:
+        cmark_next_ctag->ptr = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
+        cmark_next_ctag->tag = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
 
-        ckey = pmark_cur_ptag->ptr->key;
+        ckey = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->key;
 
         if((*prev)->tag != pmark_cur_ptag->tag || // D5:
-                (*prev)->ptr != UNMARKED_PTR(pmark_cur_ptag->ptr) ||
+                (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
                 IS_MARKED_PTR((*prev)->ptr)) {
             goto try_again;
         }
 
-        if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) { // D5:
+        if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) {
             if(ckey >= key) { // D6:
                 return ckey == key;
             }
 
-            (*prev)->ptr = pmark_cur_ptag->ptr->next.ptr; // D7:
-            (*prev)->tag = pmark_cur_ptag->ptr->next.tag;
+            (*prev)->ptr = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D7:
+            (*prev)->tag = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
         } else {
-            // D3:
+            // D8:
 
-            mtag_ptr_t expected_cur = { .ptr = UNMARKED_PTR(pmark_cur_ptag->ptr), .tag = pmark_cur_ptag->tag};
-            mtag_ptr_t new_next = { .ptr = UNMARKED_PTR(cmark_next_ctag->ptr), .tag = pmark_cur_ptag->tag + 1};
+            mtag_ptr_t expected_cur = {
+                    .ptr = SET_MARK(pmark_cur_ptag->ptr, 0),
+                    .tag = pmark_cur_ptag->tag
+            };
+
+            mtag_ptr_t new_next = {
+                    .ptr = SET_MARK(cmark_next_ctag->ptr, 0),
+                    .tag = pmark_cur_ptag->tag + 1
+            };
 
             if (atomic_compare_exchange_weak(*prev, &expected_cur, new_next)) {
-                freelist_free(pmark_cur_ptag->ptr);
-                cmark_next_ctag->tag = pmark_cur_ptag->tag;
 
-                pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
-                pmark_cur_ptag->tag = cmark_next_ctag->ptr;
+                freelist_free(GET_PTR(pmark_cur_ptag->ptr));
+                cmark_next_ctag->tag = pmark_cur_ptag->tag + 1;
+
+                     pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
+                pmark_cur_ptag->tag = cmark_next_ctag->tag;
 
                 return true;
             } else {
@@ -110,15 +118,15 @@ try_again:
             }
         }
 
-        pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
-        pmark_cur_ptag->tag = cmark_next_ctag->ptr;
+        pmark_cur_ptag->ptr = cmark_next_ctag->ptr; // D9:
+        pmark_cur_ptag->tag = cmark_next_ctag->tag;
     }
 
     return false; // Key not found D2:
 }
 
 // Find a key
-bool hashtable_find(int key)
+bool hashtable_find(int key, int value)
 {
     _Atomic(mtag_ptr_t) *head;
     mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
@@ -147,30 +155,80 @@ bool hashtable_insert(int key)
     node = freelist_allocate();
     node->key = key;
 
-    if(find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
-        return false;
-    }
+    while(!find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
+        node->next.ptr = GET_PTR(pmark_cur_ptag.ptr); // A2:
+        node->next.tag = 0;
 
-    node->next.ptr = UNMARKED_PTR(pmark_cur_ptag.ptr); // A2:
-    node->next.tag = 0;
+        // A3:
+        mtag_ptr_t expected_cur = {
+                .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
+                .tag = pmark_cur_ptag.tag
+        };
 
-    prev->ptr = node;
-    prev->tag++;
+        mtag_ptr_t new_next = {
+                .ptr = SET_MARK(node, 0),
+                .tag = pmark_cur_ptag.tag + 1
+        };
 
-    // A3:
-    mtag_ptr_t expected_cur = { .ptr = UNMARKED_PTR(pmark_cur_ptag.ptr), .tag = pmark_cur_ptag.tag};
-    mtag_ptr_t new_next = { .ptr = UNMARKED_PTR(node), .tag = pmark_cur_ptag.tag + 1};
-
-    if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
-        return true;
+        if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
+            return true;
+        }
     }
 
     return false;
 }
 
-bool hashtable_delete(mtag_ptr_t *head, int key)
+bool hashtable_delete(int key)
 {
+    node_t *node;
+    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
+    mtag_ptr_t *prev;
 
+    _Atomic(mtag_ptr_t *) head;
+
+    size_t index = hash(key);
+
+    head = &g_hash_table.head[index];
+
+    while(find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // B1:
+        {
+            // B2
+            mtag_ptr_t expected_cur = {
+                    .ptr = SET_MARK(cmark_next_ctag.ptr, 0),
+                    .tag = cmark_next_ctag.tag
+            };
+
+            mtag_ptr_t new_next = {
+                    .ptr = SET_MARK(cmark_next_ctag.ptr, 1),
+                    .tag = cmark_next_ctag.tag + 1
+            };
+
+            if (!atomic_compare_exchange_weak(&pmark_cur_ptag.ptr->next,
+                    &expected_cur, new_next)) {
+                continue;
+            }
+        }
+
+        {
+            // B3
+            mtag_ptr_t expected_cur = {
+                    .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
+                    .tag = pmark_cur_ptag.tag
+            };
+
+            mtag_ptr_t new_next = {
+                    .ptr = SET_MARK(cmark_next_ctag.ptr, 0),
+                    .tag = pmark_cur_ptag.tag + 1
+            };
+
+            if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
+                freelist_free(pmark_cur_ptag.ptr);
+                return true;
+            } // ???
+        }
+    }
+
+    return false;
 }
 
 void hash_table_destroy(void)
