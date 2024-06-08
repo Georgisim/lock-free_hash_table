@@ -21,7 +21,7 @@
 } while(0)
 
 typedef struct {
-    _Atomic(mtag_ptr_t) *head;
+    mtag_ptr_t*head;
     size_t table_size;
     size_t size_ocuppied;
 } hash_table_t;
@@ -41,7 +41,7 @@ uint64_t hash_function(const uint8_t *key, size_t len)
 
 bool hashtable_init(size_t table_size)
 {
-    g_hash_table.head = aligned_alloc(64, table_size * sizeof(_Atomic(mtag_ptr_t)));
+    g_hash_table.head = aligned_alloc(64, table_size * sizeof(mtag_ptr_t));
     if(g_hash_table.head == NULL) {
         return false;
     }
@@ -58,36 +58,33 @@ bool hashtable_init(size_t table_size)
 
 
 
-static bool find(const uint8_t *key, const uint8_t *data,
-        _Atomic(mtag_ptr_t) *head, _Atomic(mtag_ptr_t) **prev,
-                 mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
+static bool find(const uint8_t *key, uint8_t *data,
+        mtag_ptr_t *head, mtag_ptr_t **prev,
+        mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
-    int ckey;
 
 try_again:
     *prev = head;
 
     // D1:
-//    pmark_cur_ptag->ptr = (*prev)->ptr;
-//    pmark_cur_ptag->tag = (*prev)->tag;
+    pmark_cur_ptag->ptr = (*prev)->ptr;
+    pmark_cur_ptag->tag = (*prev)->tag;
 
     while (true) { // D2:
         if(GET_PTR(pmark_cur_ptag->ptr) == NULL) {
             return false;
         }
 
-        cmark_next_ctag->ptr = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
-        cmark_next_ctag->tag = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
+        cmark_next_ctag->ptr = GET_PTR(pmark_cur_ptag->ptr)->next.ptr; // D3:
+        cmark_next_ctag->tag = GET_PTR(pmark_cur_ptag->ptr)->next.tag;
 
-        ckey = ((node_t *)GET_PTR(pmark_cur_ptag->ptr));
-
-        if (atomic_load(prev)->tag != pmark_cur_ptag->tag || // D5:
-            atomic_load(prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
-            IS_MARKED_PTR(atomic_load(prev)->ptr)) {
+        if ((*prev)->tag != pmark_cur_ptag->tag || // D5:
+            (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
+            IS_MARKED_PTR((*prev)->ptr)) {
 
             DEBUG(atomic_load(prev)->tag, pmark_cur_ptag->tag);
 
-            printf("%p %p %d\n", atomic_load(prev)->ptr, GET_PTR(pmark_cur_ptag->ptr), IS_MARKED_PTR(atomic_load(prev)->ptr));
+            printf("%p %p %d\n", atomic_load(prev)->ptr, GET_PTR(pmark_cur_ptag->ptr), IS_MARKED_PTR((*prev)->ptr));
 
             goto try_again;
         }
@@ -108,7 +105,7 @@ try_again:
                 };
             }
 
-            *prev = &((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next; // D7:
+            *prev = &(GET_PTR(pmark_cur_ptag->ptr))->next; // D7:
         } else {
             // D8:
 
@@ -140,12 +137,9 @@ try_again:
 }
 
 // Find a key
-bool hashtable_find(const uint8_t *key, const uint8_t *data)
+bool hashtable_find(const uint8_t *key, uint8_t *data)
 {
-    _Atomic(mtag_ptr_t) *head;
-    _Atomic(mtag_ptr_t) *prev;
-
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
+    mtag_ptr_t *head, *prev, pmark_cur_ptag, cmark_next_ctag;
 
     uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
@@ -154,12 +148,10 @@ bool hashtable_find(const uint8_t *key, const uint8_t *data)
     return find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
 }
 
-int hashtable_insert(const uint8_t *key, const uint8_t *data)
+int hashtable_insert(const uint8_t *key, uint8_t *data)
 {
     node_t *node;
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    _Atomic(mtag_ptr_t) *prev;
-    _Atomic(mtag_ptr_t) *head;
+    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag;
 
     uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
@@ -208,10 +200,7 @@ int hashtable_insert(const uint8_t *key, const uint8_t *data)
 
 bool hashtable_delete(const uint8_t *key)
 {
-    _Atomic(mtag_ptr_t) *prev;
-    _Atomic(mtag_ptr_t) *head;
-
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag, expected_cur, new_next;
+    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag, expected_cur, new_next;
     uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
     head = &g_hash_table.head[index];
