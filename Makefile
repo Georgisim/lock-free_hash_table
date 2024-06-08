@@ -1,6 +1,6 @@
 CC=gcc
-CFLAGS=-I. -g -O0
-DEPS = freelist.h
+CFLAGS=-I. -g -O0 -D_DEBUG 
+DEPS = freelist.h hash_table_test.h
 OBJ = freelist.o hash_table.o
 
 %.o: %.c $(DEPS)
@@ -15,3 +15,6 @@ hash_table_test:  freelist.o hash_table.o hash_table_test.o
 	
 clean:
 	rm *.o
+	
+all:
+	hash_table_test hash_table_test

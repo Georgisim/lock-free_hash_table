@@ -5,24 +5,27 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdlib.h>
 
-#define HASH_TABLE_SIZE (1000)
+#define TEST_ITERATIONS 100000000
+#define HASH_TABLE_SIZE 2000000
 #define NUM_THREADS 32
+
 
 void *thread_function(void *arg) {
 
     uint8_t key[KEY_SIZE];
     uint8_t data[DATA_SIZE + 1], data_read[DATA_SIZE + 1];
 
-    for(int i; i < HASH_TABLE_SIZE * 100; i++) {
+    for(int i; i < TEST_ITERATIONS; i++) {
         for (size_t i = 0; i < KEY_SIZE; i++) {
-            key[i] =  'A' + rand() % 26;
+            key[i] =  rand() % 256;
         }
 
         key[DATA_SIZE] = 0;
 
         for (size_t i = 0; i < DATA_SIZE; i++) {
-            data[i] =  'A' + rand() % 26;
+            data[i] =  rand() % 256;
 
         }
 
@@ -30,7 +33,7 @@ void *thread_function(void *arg) {
         data_read[DATA_SIZE] = 0;
 
         if(hashtable_insert(key, data) == -1) {
-            printf("failed to inset %lu\n!", freelist_get_nuber_elements());
+            printf("failed to insert %lu\n!", freelist_get_nuber_elements());
             continue;
         }
 
@@ -61,11 +64,11 @@ int main(int argc, char **argv)
             key[i] = rand() % 256;
         }
         for (size_t i = 0; i < DATA_SIZE; i++) {
-            data[i] = 'a' + rand() % 26;
+            data[i] = rand() % 256;
         }
 
         if(hashtable_insert(key, data) == -1) {
-            printf("failed to inset %lu\n!", freelist_get_nuber_elements());
+            printf("failed to insert %lu\n!", freelist_get_nuber_elements());
             return -1;
         }
 
@@ -82,8 +85,6 @@ int main(int argc, char **argv)
     for (int i = 0; i < NUM_THREADS; ++i) {
         pthread_join(threads[i], NULL);
     }
-
-//    thread_function(NULL);
 
     return 0;
 }

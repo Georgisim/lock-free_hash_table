@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 
 #include "freelist.h"
@@ -14,11 +13,15 @@
 #define GET_PTR(p) ((node_t *)((uintptr_t)(p) & ~1))
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
-#define DEBUG(tag1, tag2) do { \
-    pthread_t         self; \
-    self = pthread_self(); \
-    printf("tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
-} while(0)
+#ifdef _DEBUG
+    #define DEBUG(tag1, tag2) do { \
+        pthread_t         self; \
+        self = pthread_self(); \
+        printf("tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
+    } while(0)
+#else
+    #define DEBUG(tag1, tag2)
+#endif
 
 typedef struct {
     mtag_ptr_t*head;
@@ -82,9 +85,7 @@ try_again:
             (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
             IS_MARKED_PTR((*prev)->ptr)) {
 
-            DEBUG(atomic_load(prev)->tag, pmark_cur_ptag->tag);
-
-            printf("%p %p %d\n", atomic_load(prev)->ptr, GET_PTR(pmark_cur_ptag->ptr), IS_MARKED_PTR((*prev)->ptr));
+            DEBUG((*prev)->tag, pmark_cur_ptag->tag);
 
             goto try_again;
         }
@@ -161,8 +162,6 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
     if(node == NULL) {
         return -1;
     }
-
-    // DEBUG("node: %p\n", node);
 
     memcpy(node->key, key, KEY_SIZE);
     memcpy(node->data, data, DATA_SIZE);

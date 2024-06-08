@@ -83,7 +83,7 @@ void* freelist_allocate()
     return (void*)old_head.ptr;
 }
 
-uint64_t freelist_get_nuber_elements(void)
+size_t freelist_get_nuber_elements(void)
 {
     return g_freelist.occupied;
 }
