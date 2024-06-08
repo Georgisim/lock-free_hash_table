@@ -29,7 +29,6 @@ static lockfree_list_t g_freelist;
 int freelist_init(size_t object_size, size_t capacity)
 {
     tag_ptr_t old_head, new_head;
-    node_t* node;
 
     g_freelist.object_size = object_size;
     g_freelist.capacity = capacity;
@@ -100,6 +99,8 @@ void freelist_free(void* ptr)
         new_head.ptr = (uintptr_t)node;
         new_head.tag = old_head.tag + 1;
     } while (!atomic_compare_exchange_weak(&g_freelist.head, &old_head, new_head));
+
+    g_freelist.occupied--;
 }
 
 // Clean up the freelist

@@ -1,7 +1,14 @@
 CC=gcc
-CFLAGS=-I. -g -O0 -D_DEBUG 
+
 DEPS = freelist.h hash_table_test.h
 OBJ = freelist.o hash_table.o
+
+BUILD := debug
+
+cflags.common := 
+cflags.debug := -g -O0 -Wall -D_DEBUG
+cflags.release := -O2 -Wall
+CFLAGS := ${cflags.${BUILD}} ${cflags.common}
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -16,5 +23,6 @@ hash_table_test:  freelist.o hash_table.o hash_table_test.o
 clean:
 	rm *.o
 	
-all:
-	hash_table_test hash_table_test
+.PHONY : all
+
+all: hash_table_test freelist_test

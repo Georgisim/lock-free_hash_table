@@ -8,8 +8,8 @@
 #include <stdlib.h>
 
 #define TEST_ITERATIONS 100000000
-#define HASH_TABLE_SIZE 2000000
-#define NUM_THREADS 32
+#define HASH_TABLE_SIZE 20000
+#define NUM_THREADS 256
 
 
 void *thread_function(void *arg) {
@@ -32,18 +32,28 @@ void *thread_function(void *arg) {
         data[DATA_SIZE] = 0;
         data_read[DATA_SIZE] = 0;
 
-        if(hashtable_insert(key, data) == -1) {
-            printf("failed to insert %lu\n!", freelist_get_nuber_elements());
+        int res = hashtable_insert(key, data);
+        if(res == -1) {
+            printf("failed to insert %lu, memory full\n!", freelist_get_nuber_elements());
+            continue;
+        } else if(res == 0){
+            // printf("failed to insert %lu, already there\n!", freelist_get_nuber_elements());
+            hashtable_delete(key);
             continue;
         }
 
-        hashtable_find(key, data_read);
+        if(!hashtable_find(key, data_read)) {
+            printf("key not found\n!");
+            continue;
+        }
 
         if(memcmp(data, data_read, DATA_SIZE)) {
             printf("key: %s added: [%s], found: [%s]\n", key, data, data_read);
         }
 
         hashtable_delete(key);
+
+        // printf("succes!!!\n");
     }
 
     return NULL;
@@ -52,7 +62,7 @@ void *thread_function(void *arg) {
 int main(int argc, char **argv)
 {
     uint8_t key[KEY_SIZE];
-    uint8_t data[DATA_SIZE], data_read[DATA_SIZE];
+    uint8_t data[DATA_SIZE];
 
      srand(time(NULL));
 
@@ -75,7 +85,6 @@ int main(int argc, char **argv)
     }
 
     printf("prefill done!\n");
-
 
     pthread_t threads[NUM_THREADS];
     for (int i = 0; i < NUM_THREADS; ++i) {

@@ -7,17 +7,17 @@
 #include "freelist.h"
 #include "hash_table.h"
 
-#include <pthread.h>
 
 #define SET_MARK(p, b) ((node_t *)((uintptr_t)(p) | (b)))
 #define GET_PTR(p) ((node_t *)((uintptr_t)(p) & ~1))
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
 #ifdef _DEBUG
+    #include <pthread.h>
     #define DEBUG(tag1, tag2) do { \
         pthread_t         self; \
         self = pthread_self(); \
-        printf("tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
+        fprintf(stderr, "CAS failed, tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
     } while(0)
 #else
     #define DEBUG(tag1, tag2)
@@ -87,7 +87,8 @@ try_again:
 
             DEBUG((*prev)->tag, pmark_cur_ptag->tag);
 
-            goto try_again;
+            // goto try_again;
+            return false;
         }
 
         if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) {
@@ -199,7 +200,7 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
 
 bool hashtable_delete(const uint8_t *key)
 {
-    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag, expected_cur, new_next;
+    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag;
     uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
     head = &g_hash_table.head[index];
@@ -230,7 +231,7 @@ bool hashtable_delete(const uint8_t *key)
             }
         }
 
-        {
+        {c
             // B3
             mtag_ptr_t expected_cur = {
                     .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
