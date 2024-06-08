@@ -15,7 +15,7 @@ struct mtag_ptr_s {
 
 #define DATA_SIZE (NODE_SIZE - KEY_SIZE - 16)
 
-#define KEY_SIZE 8
+#define KEY_SIZE 64
 #define NODE_SIZE 128
 
 typedef struct node_s {
