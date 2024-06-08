@@ -51,8 +51,9 @@ int hashtable_init(size_t hash_table_size)
     }
 
     g_hash_table.hash_table_size = hash_table_size;
-}
 
+    return 0;
+}
 
 // A simple hash function
 size_t hash(int key)
@@ -60,8 +61,8 @@ size_t hash(int key)
     return key % g_hash_table.hash_table_size;
 }
 
-static bool find(int key, mtag_ptr_t *head, mtag_ptr_t **prev,
-        mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
+static bool find(int key, _Atomic(mtag_ptr_t) *head, mtag_ptr_t **prev,
+                 mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
     int ckey;
 
@@ -72,15 +73,19 @@ try_again:
     pmark_cur_ptag->ptr = (*prev)->ptr;
     pmark_cur_ptag->tag = (*prev)->tag;
 
-    while (GET_PTR(pmark_cur_ptag->ptr)) { // D2:
-        cmark_next_ctag->ptr = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
-        cmark_next_ctag->tag = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
+    while (true) { // D2:
+        if(GET_PTR(pmark_cur_ptag->ptr) == NULL) {
+            return false;
+        }
 
-        ckey = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->key;
+        cmark_next_ctag->ptr = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
+        cmark_next_ctag->tag = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
 
-        if((*prev)->tag != pmark_cur_ptag->tag || // D5:
-                (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
-                IS_MARKED_PTR((*prev)->ptr)) {
+        ckey = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->key;
+
+        if (atomic_load(prev)->tag != pmark_cur_ptag->tag || // D5:
+            atomic_load(prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
+            IS_MARKED_PTR(atomic_load(prev)->ptr)) {
             goto try_again;
         }
 
@@ -89,8 +94,7 @@ try_again:
                 return ckey == key;
             }
 
-            (*prev)->ptr = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D7:
-            (*prev)->tag = ((node_t*)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
+            *prev = &((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next; // D7:
         } else {
             // D8:
 
@@ -105,12 +109,8 @@ try_again:
             };
 
             if (atomic_compare_exchange_weak(*prev, &expected_cur, new_next)) {
-
                 freelist_free(GET_PTR(pmark_cur_ptag->ptr));
                 cmark_next_ctag->tag = pmark_cur_ptag->tag + 1;
-
-                     pmark_cur_ptag->ptr = cmark_next_ctag->ptr;
-                pmark_cur_ptag->tag = cmark_next_ctag->tag;
 
                 return true;
             } else {
@@ -121,8 +121,6 @@ try_again:
         pmark_cur_ptag->ptr = cmark_next_ctag->ptr; // D9:
         pmark_cur_ptag->tag = cmark_next_ctag->tag;
     }
-
-    return false; // Key not found D2:
 }
 
 // Find a key
@@ -155,21 +153,27 @@ bool hashtable_insert(int key)
     node = freelist_allocate();
     node->key = key;
 
-    while(!find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
+    while (true) {
+        // Find the appropriate position to insert
+        if (find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
+            return false;
+        }
+        // Prepare the node to be inserted
         node->next.ptr = GET_PTR(pmark_cur_ptag.ptr); // A2:
         node->next.tag = 0;
 
-        // A3:
+        // Prepare the expected and new values for the compare-and-swap operation
         mtag_ptr_t expected_cur = {
-                .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
-                .tag = pmark_cur_ptag.tag
+            .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
+            .tag = pmark_cur_ptag.tag
         };
 
         mtag_ptr_t new_next = {
-                .ptr = SET_MARK(node, 0),
-                .tag = pmark_cur_ptag.tag + 1
+            .ptr = SET_MARK(node, 0),
+            .tag = pmark_cur_ptag.tag + 1
         };
 
+        // Attempt to insert the new node into the linked list
         if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
             return true;
         }
@@ -235,7 +239,4 @@ void hash_table_destroy(void)
 {
     free(g_hash_table.head);
 }
-
-
-
 

@@ -59,7 +59,8 @@ int main()
     }
 
     // Remove a key-value pair
-     // hashtable_delete(1);
+    hashtable_delete(1);
+
     if (hashtable_find(1, &value)) {
         printf("Key 1 has value %d\n", value);
     } else {
