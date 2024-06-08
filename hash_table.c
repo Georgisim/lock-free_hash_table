@@ -6,12 +6,10 @@
 #include <string.h>
 
 #include "freelist.h"
-
 #include "hash_table.h"
 
-
 #define SET_MARK(p, b) ((node_t *)((uintptr_t)(p) | (b)))
-#define GET_PTR(p) ((uintptr_t)(p) & ~1)
+#define GET_PTR(p) ((node_t *)((uintptr_t)(p) & ~1))
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
 typedef struct mtag_ptr_s mtag_ptr_t;
@@ -40,13 +38,13 @@ int hashtable_init(size_t hash_table_size)
 {
     freelist_init(sizeof(node_t), hash_table_size * 2);
 
-    g_hash_table.head = calloc(sizeof(mtag_ptr_t), hash_table_size);
+    g_hash_table.head = calloc(hash_table_size, sizeof(_Atomic(mtag_ptr_t)));
     if (g_hash_table.head == NULL) {
         return -1; // Memory allocation failed
     }
 
     for (size_t i = 0; i < hash_table_size; i++) {
-        mtag_ptr_t init_head = { .ptr = 0, .tag = i };
+        mtag_ptr_t init_head = { .ptr = NULL, .tag = i };
         atomic_store(&g_hash_table.head[i], init_head);
     }
 
@@ -61,7 +59,7 @@ size_t hash(int key)
     return key % g_hash_table.hash_table_size;
 }
 
-static bool find(int key, _Atomic(mtag_ptr_t) *head, mtag_ptr_t **prev,
+static bool find(int key, _Atomic(mtag_ptr_t) *head, _Atomic(mtag_ptr_t) **prev,
                  mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
     int ckey;
@@ -128,21 +126,20 @@ bool hashtable_find(int key, int value)
 {
     _Atomic(mtag_ptr_t) *head;
     mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    mtag_ptr_t *prev;
+    _Atomic(mtag_ptr_t) *prev;
 
     size_t index = hash(key);
 
     head = &g_hash_table.head[index];
 
     return find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
-
 }
 
 bool hashtable_insert(int key)
 {
     node_t *node;
     mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    mtag_ptr_t *prev;
+    _Atomic(mtag_ptr_t) *prev;
 
     _Atomic(mtag_ptr_t) *head;
 
@@ -184,11 +181,11 @@ bool hashtable_insert(int key)
 
 bool hashtable_delete(int key)
 {
-    node_t *node;
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    mtag_ptr_t *prev;
+    _Atomic(mtag_ptr_t) *prev;
+    _Atomic(mtag_ptr_t) *head;
 
-    _Atomic(mtag_ptr_t *) head;
+    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
+
 
     size_t index = hash(key);
 
@@ -207,8 +204,8 @@ bool hashtable_delete(int key)
                     .tag = cmark_next_ctag.tag + 1
             };
 
-            if (!atomic_compare_exchange_weak(&pmark_cur_ptag.ptr->next,
-                    &expected_cur, new_next)) {
+            if (!atomic_compare_exchange_weak(&GET_PTR(pmark_cur_ptag.ptr)->next,
+                                              &expected_cur, new_next)) {
                 continue;
             }
         }
