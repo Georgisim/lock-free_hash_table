@@ -3,102 +3,87 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <pthread.h>
 
-// Example usage
-int main()
+#define HASH_TABLE_SIZE (1000)
+#define NUM_THREADS 32
+
+void *thread_function(void *arg) {
+
+    uint8_t key[KEY_SIZE];
+    uint8_t data[DATA_SIZE + 1], data_read[DATA_SIZE + 1];
+
+    for(int i; i < HASH_TABLE_SIZE * 100; i++) {
+        for (size_t i = 0; i < KEY_SIZE; i++) {
+            key[i] =  'A' + rand() % 26;
+        }
+
+        key[DATA_SIZE] = 0;
+
+        for (size_t i = 0; i < DATA_SIZE; i++) {
+            data[i] =  'A' + rand() % 26;
+
+        }
+
+        data[DATA_SIZE] = 0;
+        data_read[DATA_SIZE] = 0;
+
+        if(hashtable_insert(key, data) == -1) {
+            printf("failed to inset %lu\n!", freelist_get_nuber_elements());
+            continue;
+        }
+
+        hashtable_find(key, data_read);
+
+        if(memcmp(data, data_read, DATA_SIZE)) {
+            printf("key: %s added: [%s], found: [%s]\n", key, data, data_read);
+        }
+
+        hashtable_delete(key);
+    }
+
+    return NULL;
+}
+
+int main(int argc, char **argv)
 {
-    int value;
+    uint8_t key[KEY_SIZE];
+    uint8_t data[DATA_SIZE], data_read[DATA_SIZE];
 
-    hashtable_init(100);
+     srand(time(NULL));
 
-    // Insert key-value pairs
-    hashtable_insert(1, 100);
+    freelist_init(sizeof(node_t), HASH_TABLE_SIZE * 2);
+    hashtable_init(HASH_TABLE_SIZE);
 
+    for(size_t j = 0; j < (HASH_TABLE_SIZE * 3) / 4; j++) {
+        for (size_t i = 0; i < KEY_SIZE; i++) {
+            key[i] = rand() % 256;
+        }
+        for (size_t i = 0; i < DATA_SIZE; i++) {
+            data[i] = 'a' + rand() % 26;
+        }
 
-    hashtable_insert(2, 200);
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
+        if(hashtable_insert(key, data) == -1) {
+            printf("failed to inset %lu\n!", freelist_get_nuber_elements());
+            return -1;
+        }
+
     }
 
-    hashtable_insert(102, 201);
+    printf("prefill done!\n");
 
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
+
+    pthread_t threads[NUM_THREADS];
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_create(&threads[i], NULL, thread_function, NULL);
     }
 
-
-    if (hashtable_find(102, &value)) {
-        printf("Key 102 has value %d\n", value);
-    } else {
-        printf("Key 102 not found\n");
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(threads[i], NULL);
     }
 
-
-
-
-
-
-
-
-
-
-
-    hashtable_insert(2342342, 2342342);
-
-
-    // Find values
-
-    if (hashtable_find(1, &value)) {
-        printf("Key 1 has value %d\n", value);
-    } else {
-        printf("Key 1 not found\n");
-    }
-
-    // Remove a key-value pair
-    hashtable_delete(1);
-
-    if (hashtable_find(1, &value)) {
-        printf("Key 1 has value %d\n", value);
-    } else {
-        printf("Key 1 not found\n");
-    }
-
-
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
-    }
-
-
-    if (hashtable_find(202, &value)) {
-        printf("Key 202 has value %d\n", value);
-    } else {
-        printf("Key 202 not found\n");
-    }
-
-    if (hashtable_find(2342342, &value)) {
-        printf("Key 2342342 has value %d\n", value);
-    } else {
-        printf("Key 2342342 not found\n");
-    }
-
-    hashtable_delete(2342342);
-
-    if (hashtable_find(2342342, &value)) {
-        printf("Key 2342342 has value %d\n", value);
-    } else {
-        printf("Key 2342342 not found\n");
-    }
-
-    // Clean up freelist
-    hash_table_destroy();
+//    thread_function(NULL);
 
     return 0;
 }
-
-
