@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-<<<<<<< Updated upstream
-=======
 typedef struct mtag_ptr_s mtag_ptr_t;
 typedef struct node_s node_t;
 
@@ -26,7 +24,6 @@ typedef struct node_s {
     uint8_t key[KEY_SIZE];
     uint8_t data[DATA_SIZE];
 } node_t;
->>>>>>> Stashed changes
 
 
 bool hashtable_init(size_t table_size);

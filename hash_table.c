@@ -7,25 +7,12 @@
 #include "freelist.h"
 #include "hash_table.h"
 
+#include <pthread.h>
+
 #define SET_MARK(p, b) ((node_t *)((uintptr_t)(p) | (b)))
 #define GET_PTR(p) ((node_t *)((uintptr_t)(p) & ~1))
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
-<<<<<<< Updated upstream
-typedef struct mtag_ptr_s mtag_ptr_t;
-typedef struct node_s node_t;
-
-struct mtag_ptr_s {
-    node_t *ptr;
-    uint64_t tag;
-};
-
-typedef struct node_s {
-    _Atomic(mtag_ptr_t) next;
-
-    int key;
-} node_t;
-=======
 #ifdef _DEBUG
     #define DEBUG(tag1, tag2) do { \
         pthread_t         self; \
@@ -35,45 +22,49 @@ typedef struct node_s {
 #else
     #define DEBUG(tag1, tag2)
 #endif
->>>>>>> Stashed changes
 
 typedef struct {
-    _Atomic(mtag_ptr_t) *head;
-    size_t hash_table_size;
+    mtag_ptr_t*head;
+    size_t table_size;
+    size_t size_ocuppied;
 } hash_table_t;
 
-static hash_table_t g_hash_table;
+hash_table_t g_hash_table;
 
-// Initialize the hash table
-int hashtable_init(size_t hash_table_size)
+uint64_t hash_function(const uint8_t *key, size_t len) 
 {
-    freelist_init(sizeof(node_t), hash_table_size * 2);
-
-    g_hash_table.head = calloc(hash_table_size, sizeof(_Atomic(mtag_ptr_t)));
-    if (g_hash_table.head == NULL) {
-        return -1; // Memory allocation failed
+    uint64_t hash = 0xcbf29ce484222325;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= key[i];
+        hash *= 0x100000001b3;
     }
 
-    for (size_t i = 0; i < hash_table_size; i++) {
-        mtag_ptr_t init_head = { .ptr = NULL, .tag = i };
+    return hash;
+}
+
+bool hashtable_init(size_t table_size)
+{
+    g_hash_table.head = aligned_alloc(64, table_size * sizeof(mtag_ptr_t));
+    if(g_hash_table.head == NULL) {
+        return false;
+    }
+
+    for (size_t i = 0; i < table_size; i++) {
+        mtag_ptr_t init_head = { .ptr = NULL, .tag = 0 };
         atomic_store(&g_hash_table.head[i], init_head);
     }
 
-    g_hash_table.hash_table_size = hash_table_size;
+    g_hash_table.table_size = table_size;
 
-    return 0;
+    return false;
 }
 
-// A simple hash function
-size_t hash(int key)
-{
-    return key % g_hash_table.hash_table_size;
-}
 
-static bool find(int key, _Atomic(mtag_ptr_t) *head, _Atomic(mtag_ptr_t) **prev,
-                 mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
+
+static bool find(const uint8_t *key, uint8_t *data,
+        mtag_ptr_t *head, mtag_ptr_t **prev,
+        mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
-    int ckey;
 
 try_again:
     *prev = head;
@@ -87,31 +78,35 @@ try_again:
             return false;
         }
 
-        cmark_next_ctag->ptr = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
-        cmark_next_ctag->tag = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
+        cmark_next_ctag->ptr = GET_PTR(pmark_cur_ptag->ptr)->next.ptr; // D3:
+        cmark_next_ctag->tag = GET_PTR(pmark_cur_ptag->ptr)->next.tag;
 
-<<<<<<< Updated upstream
-        ckey = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->key;
-=======
         if ((*prev)->tag != pmark_cur_ptag->tag || // D5:
             (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
             IS_MARKED_PTR((*prev)->ptr)) {
 
             DEBUG((*prev)->tag, pmark_cur_ptag->tag);
->>>>>>> Stashed changes
 
-        if (atomic_load(prev)->tag != pmark_cur_ptag->tag || // D5:
-            atomic_load(prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
-            IS_MARKED_PTR(atomic_load(prev)->ptr)) {
             goto try_again;
         }
 
         if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) {
-            if(ckey >= key) { // D6:
-                return ckey == key;
+            int ckey;
+
+            ckey = memcmp(GET_PTR(pmark_cur_ptag->ptr)->key, key, KEY_SIZE);
+            if(ckey >= 0) { // D6:
+                if(ckey == 0) {
+                    if(data) {
+                        memcpy(data, GET_PTR(pmark_cur_ptag->ptr)->data, DATA_SIZE);
+                    }
+
+                    return true;
+                } else {
+                    return false;
+                };
             }
 
-            *prev = &((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next; // D7:
+            *prev = &(GET_PTR(pmark_cur_ptag->ptr))->next; // D7:
         } else {
             // D8:
 
@@ -126,11 +121,13 @@ try_again:
             };
 
             if (atomic_compare_exchange_weak(*prev, &expected_cur, new_next)) {
+                // printf("free: %p %lu\n", pmark_cur_ptag->ptr, pmark_cur_ptag->tag);
                 freelist_free(GET_PTR(pmark_cur_ptag->ptr));
                 cmark_next_ctag->tag = pmark_cur_ptag->tag + 1;
 
                 return true;
             } else {
+                DEBUG((*prev)->tag, pmark_cur_ptag->tag);
                 goto try_again;
             }
         }
@@ -141,46 +138,37 @@ try_again:
 }
 
 // Find a key
-bool hashtable_find(int key, int value)
+bool hashtable_find(const uint8_t *key, uint8_t *data)
 {
-    _Atomic(mtag_ptr_t) *head;
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    _Atomic(mtag_ptr_t) *prev;
+    mtag_ptr_t *head, *prev, pmark_cur_ptag, cmark_next_ctag;
 
-    size_t index = hash(key);
+    uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
     head = &g_hash_table.head[index];
 
-    return find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
+    return find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
 }
 
-bool hashtable_insert(int key)
+int hashtable_insert(const uint8_t *key, uint8_t *data)
 {
     node_t *node;
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-    _Atomic(mtag_ptr_t) *prev;
+    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag;
 
-    _Atomic(mtag_ptr_t) *head;
-
-    size_t index = hash(key);
+    uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
     head = &g_hash_table.head[index];
 
     node = freelist_allocate();
-<<<<<<< Updated upstream
-    node->key = key;
-=======
     if(node == NULL) {
         return -1;
     }
 
     memcpy(node->key, key, KEY_SIZE);
     memcpy(node->data, data, DATA_SIZE);
->>>>>>> Stashed changes
 
     while (true) {
         // Find the appropriate position to insert
-        if (find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
+        if (find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
             return false;
         }
         // Prepare the node to be inserted
@@ -200,26 +188,27 @@ bool hashtable_insert(int key)
 
         // Attempt to insert the new node into the linked list
         if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
-            return true;
+            return 0;
         }
+        DEBUG(prev->tag, pmark_cur_ptag.tag);
     }
 
-    return false;
+
+    return 1;
 }
 
-bool hashtable_delete(int key)
+bool hashtable_delete(const uint8_t *key)
 {
-    _Atomic(mtag_ptr_t) *prev;
-    _Atomic(mtag_ptr_t) *head;
-
-    mtag_ptr_t pmark_cur_ptag, cmark_next_ctag;
-
-
-    size_t index = hash(key);
+    mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag, expected_cur, new_next;
+    uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
 
     head = &g_hash_table.head[index];
 
-    while(find(key, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // B1:
+    while(true) { // B1:
+        if(!find(key, NULL, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) {
+            return false;
+        }
+
         {
             // B2
             mtag_ptr_t expected_cur = {
@@ -232,8 +221,11 @@ bool hashtable_delete(int key)
                     .tag = cmark_next_ctag.tag + 1
             };
 
+
             if (!atomic_compare_exchange_weak(&GET_PTR(pmark_cur_ptag.ptr)->next,
                                               &expected_cur, new_next)) {
+                DEBUG(GET_PTR(pmark_cur_ptag.ptr)->next.tag, cmark_next_ctag.tag);
+                //printf("!!!%p %p\n", &GET_PTR(pmark_cur_ptag.ptr)->next, cmark_next_ctag.ptr);
                 continue;
             }
         }
@@ -250,10 +242,16 @@ bool hashtable_delete(int key)
                     .tag = pmark_cur_ptag.tag + 1
             };
 
+
             if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
+                // printf("free: %p %lu\n", pmark_cur_ptag.ptr, pmark_cur_ptag.tag);
                 freelist_free(pmark_cur_ptag.ptr);
                 return true;
-            } // ???
+            } else {
+                DEBUG(prev->tag, pmark_cur_ptag.tag);
+
+                find(key, NULL, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
+            }
         }
     }
 

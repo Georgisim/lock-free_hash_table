@@ -13,6 +13,7 @@ typedef struct {
     void* memory_pool;  // Contiguous block of memory for objects
     size_t object_size;
     size_t capacity;
+    _Atomic(size_t) occupied;
 } lockfree_list_t;
 
 
@@ -32,7 +33,7 @@ int freelist_init(size_t object_size, size_t capacity)
 
     g_freelist.object_size = object_size;
     g_freelist.capacity = capacity;
-    g_freelist.memory_pool = calloc(object_size, capacity);
+    g_freelist.memory_pool = aligned_alloc(64, capacity * object_size);
     if (g_freelist.memory_pool == NULL) {
         return -1;
     }
@@ -77,17 +78,16 @@ void* freelist_allocate()
         new_head.tag = old_head.tag + 1;
     } while (!atomic_compare_exchange_weak(&g_freelist.head, &old_head, new_head));
 
+    g_freelist.occupied++;
+
     return (void*)old_head.ptr;
 }
 
-<<<<<<< Updated upstream
-=======
 size_t freelist_get_nuber_elements(void)
 {
     return g_freelist.occupied;
 }
 
->>>>>>> Stashed changes
 // Free an object
 void freelist_free(void* ptr)
 {

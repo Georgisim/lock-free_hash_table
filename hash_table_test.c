@@ -3,15 +3,6 @@
 
 #include <string.h>
 #include <stdio.h>
-<<<<<<< Updated upstream
-
-// Example usage
-int main()
-{
-    int value;
-
-    hashtable_init(100);
-=======
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -22,69 +13,52 @@ int main()
 
 
 void *thread_function(void *arg) {
->>>>>>> Stashed changes
 
-    // Insert key-value pairs
-    hashtable_insert(1, 100);
+    uint8_t key[KEY_SIZE];
+    uint8_t data[DATA_SIZE + 1], data_read[DATA_SIZE + 1];
 
-<<<<<<< Updated upstream
-=======
     for(int i; i < TEST_ITERATIONS; i++) {
         for (size_t i = 0; i < KEY_SIZE; i++) {
             key[i] =  rand() % 256;
         }
->>>>>>> Stashed changes
 
-    hashtable_insert(2, 200);
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
-    }
+        key[DATA_SIZE] = 0;
 
-    hashtable_insert(102, 201);
-
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
-    }
-
-
-    if (hashtable_find(102, &value)) {
-        printf("Key 102 has value %d\n", value);
-    } else {
-        printf("Key 102 not found\n");
-    }
-
-<<<<<<< Updated upstream
-=======
         for (size_t i = 0; i < DATA_SIZE; i++) {
             data[i] =  rand() % 256;
->>>>>>> Stashed changes
 
+        }
 
+        data[DATA_SIZE] = 0;
+        data_read[DATA_SIZE] = 0;
 
-<<<<<<< Updated upstream
-=======
         if(hashtable_insert(key, data) == -1) {
             printf("failed to insert %lu\n!", freelist_get_nuber_elements());
             continue;
         }
->>>>>>> Stashed changes
 
+        hashtable_find(key, data_read);
 
+        if(memcmp(data, data_read, DATA_SIZE)) {
+            printf("key: %s added: [%s], found: [%s]\n", key, data, data_read);
+        }
 
+        hashtable_delete(key);
+    }
 
+    return NULL;
+}
 
+int main(int argc, char **argv)
+{
+    uint8_t key[KEY_SIZE];
+    uint8_t data[DATA_SIZE], data_read[DATA_SIZE];
 
+     srand(time(NULL));
 
-    hashtable_insert(2342342, 2342342);
+    freelist_init(sizeof(node_t), HASH_TABLE_SIZE * 2);
+    hashtable_init(HASH_TABLE_SIZE);
 
-<<<<<<< Updated upstream
-
-    // Find values
-=======
     for(size_t j = 0; j < (HASH_TABLE_SIZE * 3) / 4; j++) {
         for (size_t i = 0; i < KEY_SIZE; i++) {
             key[i] = rand() % 256;
@@ -97,58 +71,20 @@ void *thread_function(void *arg) {
             printf("failed to insert %lu\n!", freelist_get_nuber_elements());
             return -1;
         }
->>>>>>> Stashed changes
 
-    if (hashtable_find(1, &value)) {
-        printf("Key 1 has value %d\n", value);
-    } else {
-        printf("Key 1 not found\n");
     }
 
-    // Remove a key-value pair
-    hashtable_delete(1);
+    printf("prefill done!\n");
 
-    if (hashtable_find(1, &value)) {
-        printf("Key 1 has value %d\n", value);
-    } else {
-        printf("Key 1 not found\n");
+
+    pthread_t threads[NUM_THREADS];
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_create(&threads[i], NULL, thread_function, NULL);
     }
 
-
-    if (hashtable_find(2, &value)) {
-        printf("Key 2 has value %d\n", value);
-    } else {
-        printf("Key 2 not found\n");
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(threads[i], NULL);
     }
 
-
-    if (hashtable_find(202, &value)) {
-        printf("Key 202 has value %d\n", value);
-    } else {
-        printf("Key 202 not found\n");
-    }
-
-    if (hashtable_find(2342342, &value)) {
-        printf("Key 2342342 has value %d\n", value);
-    } else {
-        printf("Key 2342342 not found\n");
-    }
-
-<<<<<<< Updated upstream
-    hashtable_delete(2342342);
-
-    if (hashtable_find(2342342, &value)) {
-        printf("Key 2342342 has value %d\n", value);
-    } else {
-        printf("Key 2342342 not found\n");
-    }
-
-    // Clean up freelist
-    hash_table_destroy();
-
-=======
->>>>>>> Stashed changes
     return 0;
 }
-
-
