@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 
 #include "freelist.h"
@@ -12,6 +11,7 @@
 #define GET_PTR(p) ((node_t *)((uintptr_t)(p) & ~1))
 #define IS_MARKED_PTR(p) ((uintptr_t)(p) & 1)
 
+<<<<<<< Updated upstream
 typedef struct mtag_ptr_s mtag_ptr_t;
 typedef struct node_s node_t;
 
@@ -25,6 +25,17 @@ typedef struct node_s {
 
     int key;
 } node_t;
+=======
+#ifdef _DEBUG
+    #define DEBUG(tag1, tag2) do { \
+        pthread_t         self; \
+        self = pthread_self(); \
+        printf("tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
+    } while(0)
+#else
+    #define DEBUG(tag1, tag2)
+#endif
+>>>>>>> Stashed changes
 
 typedef struct {
     _Atomic(mtag_ptr_t) *head;
@@ -79,7 +90,15 @@ try_again:
         cmark_next_ctag->ptr = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.ptr; // D3:
         cmark_next_ctag->tag = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->next.tag;
 
+<<<<<<< Updated upstream
         ckey = ((node_t *)GET_PTR(pmark_cur_ptag->ptr))->key;
+=======
+        if ((*prev)->tag != pmark_cur_ptag->tag || // D5:
+            (*prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
+            IS_MARKED_PTR((*prev)->ptr)) {
+
+            DEBUG((*prev)->tag, pmark_cur_ptag->tag);
+>>>>>>> Stashed changes
 
         if (atomic_load(prev)->tag != pmark_cur_ptag->tag || // D5:
             atomic_load(prev)->ptr != GET_PTR(pmark_cur_ptag->ptr) ||
@@ -148,7 +167,16 @@ bool hashtable_insert(int key)
     head = &g_hash_table.head[index];
 
     node = freelist_allocate();
+<<<<<<< Updated upstream
     node->key = key;
+=======
+    if(node == NULL) {
+        return -1;
+    }
+
+    memcpy(node->key, key, KEY_SIZE);
+    memcpy(node->data, data, DATA_SIZE);
+>>>>>>> Stashed changes
 
     while (true) {
         // Find the appropriate position to insert

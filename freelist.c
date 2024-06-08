@@ -80,6 +80,14 @@ void* freelist_allocate()
     return (void*)old_head.ptr;
 }
 
+<<<<<<< Updated upstream
+=======
+size_t freelist_get_nuber_elements(void)
+{
+    return g_freelist.occupied;
+}
+
+>>>>>>> Stashed changes
 // Free an object
 void freelist_free(void* ptr)
 {
