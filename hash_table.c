@@ -31,6 +31,7 @@ typedef struct {
 
 hash_table_t g_hash_table;
 
+// Fowler–Noll–Vo
 uint64_t hash_function(const uint8_t *key, size_t len) 
 {
     uint64_t hash = 0xcbf29ce484222325;
@@ -231,7 +232,7 @@ bool hashtable_delete(const uint8_t *key)
             }
         }
 
-        {c
+        {
             // B3
             mtag_ptr_t expected_cur = {
                     .ptr = SET_MARK(pmark_cur_ptag.ptr, 0),
