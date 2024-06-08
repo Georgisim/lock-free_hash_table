@@ -17,7 +17,7 @@
     #define DEBUG(tag1, tag2) do { \
         pthread_t         self; \
         self = pthread_self(); \
-        fprintf(stderr, "CAS failed, tag:<%lu, %lu> %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
+        fprintf(stderr, "CAS failed, tag:<%06lu, %06lu>, tid: %lu, %s:%d\n", tag1, tag2, self, __FUNCTION__, __LINE__); \
     } while(0)
 #else
     #define DEBUG(tag1, tag2)

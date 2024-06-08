@@ -8,8 +8,8 @@
 #include <stdlib.h>
 
 #define TEST_ITERATIONS 100000000
-#define HASH_TABLE_SIZE 20000
-#define NUM_THREADS 256
+#define HASH_TABLE_SIZE 2000000
+#define NUM_THREADS 32
 
 
 void *thread_function(void *arg) {
@@ -63,12 +63,14 @@ int main(int argc, char **argv)
 {
     uint8_t key[KEY_SIZE];
     uint8_t data[DATA_SIZE];
+    pthread_t threads[NUM_THREADS];
 
-     srand(time(NULL));
+    srand(time(NULL));
 
     freelist_init(sizeof(node_t), HASH_TABLE_SIZE * 2);
     hashtable_init(HASH_TABLE_SIZE);
 
+    printf("start prefill ...\n");
     for(size_t j = 0; j < (HASH_TABLE_SIZE * 3) / 4; j++) {
         for (size_t i = 0; i < KEY_SIZE; i++) {
             key[i] = rand() % 256;
@@ -86,7 +88,6 @@ int main(int argc, char **argv)
 
     printf("prefill done!\n");
 
-    pthread_t threads[NUM_THREADS];
     for (int i = 0; i < NUM_THREADS; ++i) {
         pthread_create(&threads[i], NULL, thread_function, NULL);
     }
@@ -94,6 +95,8 @@ int main(int argc, char **argv)
     for (int i = 0; i < NUM_THREADS; ++i) {
         pthread_join(threads[i], NULL);
     }
+
+    printf("test done!\n");
 
     return 0;
 }
