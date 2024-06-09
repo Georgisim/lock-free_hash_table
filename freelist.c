@@ -26,7 +26,7 @@ typedef struct node_t {
 static lockfree_list_t g_freelist;
 
 // Initialize the freelist
-int freelist_init(size_t object_size, size_t capacity)
+bool freelist_init(size_t object_size, size_t capacity)
 {
     tag_ptr_t old_head, new_head;
 
@@ -34,7 +34,7 @@ int freelist_init(size_t object_size, size_t capacity)
     g_freelist.capacity = capacity;
     g_freelist.memory_pool = aligned_alloc(64, capacity * object_size);
     if (g_freelist.memory_pool == NULL) {
-        return -1;
+        return false;
     }
 
     // Initialize the freelist
@@ -57,11 +57,11 @@ int freelist_init(size_t object_size, size_t capacity)
         } while (!atomic_compare_exchange_weak(&g_freelist.head, &old_head, new_head));
     }
         
-    return 0;
+    return true;
 }
 
 // Allocate an object
-void* freelist_allocate()
+void* freelist_allocate(void)
 {
     tag_ptr_t old_head, new_head;
 

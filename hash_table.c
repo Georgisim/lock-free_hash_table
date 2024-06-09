@@ -57,7 +57,7 @@ bool hashtable_init(size_t table_size)
 
     g_hash_table.table_size = table_size;
 
-    return false;
+    return true;
 }
 
 

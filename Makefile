@@ -10,6 +10,10 @@ cflags.debug := -g -O0 -Wall -D_DEBUG
 cflags.release := -O2 -Wall
 CFLAGS := ${cflags.${BUILD}} ${cflags.common}
 
+.PHONY : all
+
+all: hash_table_test freelist_test
+
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
@@ -23,6 +27,4 @@ hash_table_test:  freelist.o hash_table.o hash_table_test.o
 clean:
 	rm *.o
 	
-.PHONY : all
 
-all: hash_table_test freelist_test

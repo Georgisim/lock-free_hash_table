@@ -7,13 +7,12 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define TEST_ITERATIONS 100000000
-#define HASH_TABLE_SIZE 2000000
+#define TEST_ITERATIONS 100000000UL
+#define HASH_TABLE_SIZE 2000000UL
 #define NUM_THREADS 32
 
-
-void *thread_function(void *arg) {
-
+void *thread_function(void *arg)
+{
     uint8_t key[KEY_SIZE];
     uint8_t data[DATA_SIZE + 1], data_read[DATA_SIZE + 1];
 
@@ -67,8 +66,18 @@ int main(int argc, char **argv)
 
     srand(time(NULL));
 
-    freelist_init(sizeof(node_t), HASH_TABLE_SIZE * 2);
-    hashtable_init(HASH_TABLE_SIZE);
+    printf("hash table size: %lu elements, key size: %d, data size: %d\n",
+            HASH_TABLE_SIZE, KEY_SIZE, DATA_SIZE);
+
+    if(!freelist_init(sizeof(node_t), HASH_TABLE_SIZE)) {
+        printf("failed to initialize freelist\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(!hashtable_init(HASH_TABLE_SIZE)) {
+        printf("failed to initialize hashtable\n");
+        exit(EXIT_FAILURE);
+    }
 
     printf("start prefill ...\n");
     for(size_t j = 0; j < (HASH_TABLE_SIZE * 3) / 4; j++) {
@@ -83,7 +92,6 @@ int main(int argc, char **argv)
             printf("failed to insert %lu\n!", freelist_get_nuber_elements());
             return -1;
         }
-
     }
 
     printf("prefill done!\n");
@@ -98,5 +106,8 @@ int main(int argc, char **argv)
 
     printf("test done!\n");
 
-    return 0;
+    hash_table_destroy();
+    freelist_destroy();
+
+    exit(EXIT_SUCCESS);
 }
