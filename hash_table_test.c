@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #define TEST_ITERATIONS 100000000UL
 #define HASH_TABLE_SIZE 2000000UL
@@ -58,11 +59,24 @@ void *thread_function(void *arg)
     return NULL;
 }
 
+void print_statistics(struct timeval start, struct timeval end,
+        size_t total_insertions)
+{
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
+    double throughput = total_insertions / elapsed;
+
+    printf("Total time taken: %.2f seconds\n", elapsed);
+    printf("Throughput: %.2f operations/second\n", throughput);
+}
+
+
 int main(int argc, char **argv)
 {
-    uint8_t key[KEY_SIZE];
-    uint8_t data[DATA_SIZE];
-    pthread_t threads[NUM_THREADS];
+    uint8_t    key[KEY_SIZE];
+    uint8_t    data[DATA_SIZE];
+    pthread_t *threads;
+    int        num_threads = NUM_THREADS;
+    struct     timeval start, end;
 
     srand(time(NULL));
 
@@ -96,13 +110,25 @@ int main(int argc, char **argv)
 
     printf("prefill done!\n");
 
-    for (int i = 0; i < NUM_THREADS; ++i) {
+    threads = malloc(num_threads * sizeof(pthread_t));
+    if(!threads) {
+        printf("failed to create treads\n");
+        exit(EXIT_FAILURE);
+    }
+
+    gettimeofday(&start, NULL);
+
+    for (int i = 0; i < num_threads; ++i) {
         pthread_create(&threads[i], NULL, thread_function, NULL);
     }
 
-    for (int i = 0; i < NUM_THREADS; ++i) {
+    for (int i = 0; i < num_threads; ++i) {
         pthread_join(threads[i], NULL);
     }
+
+    gettimeofday(&end, NULL);
+
+    print_statistics(start, end, TEST_ITERATIONS);
 
     printf("test done!\n");
 
