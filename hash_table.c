@@ -206,7 +206,7 @@ bool hashtable_delete(const uint8_t *key)
     head = &g_hash_table.head[index];
 
     while(true) { // B1:
-        if(!find(key, NULL, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) {
+        if(find(key, NULL, head, &prev, &pmark_cur_ptag, &cmark_next_ctag) != E_FOUND) {
             return E_NOTFOUND;
         }
 
@@ -247,7 +247,7 @@ bool hashtable_delete(const uint8_t *key)
             if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
                 // printf("free: %p %lu\n", pmark_cur_ptag.ptr, pmark_cur_ptag.tag);
                 freelist_free(pmark_cur_ptag.ptr);
-                return true;
+                return E_FOUND;
             } else {
                 DEBUG(prev->tag, pmark_cur_ptag.tag);
 
@@ -255,8 +255,6 @@ bool hashtable_delete(const uint8_t *key)
             }
         }
     }
-
-    return false;
 }
 
 void hash_table_destroy(void)

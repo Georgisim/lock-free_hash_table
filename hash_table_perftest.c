@@ -29,14 +29,23 @@ typedef struct {
     uint8_t **data;
 } thread_args_t;
 
-static long unsigned int _failed_insertions = 0;
-static long unsigned int *failed_insertions = &_failed_insertions;
+static long unsigned int _duplicate_insertions = 0;
+static long unsigned int *duplicate_insertions = &_duplicate_insertions;
 
 static long unsigned int _total_insertions = 0;
 static long unsigned int *total_insertions = &_total_insertions;
 
 static long unsigned int _mem_full = 0;
 static long unsigned int *mem_full = &_mem_full;
+
+static long unsigned int _retry_insert= 0;
+static long unsigned int *retry_insert = &_retry_insert;
+
+static long unsigned int _changed_insert= 0;
+static long unsigned int *changed_insert = &_changed_insert;
+
+static long unsigned int _notfound_insert= 0;
+static long unsigned int *notfound_insert = &_notfound_insert;
 
 
 void *thread_function(void *arg)
@@ -64,32 +73,34 @@ void *thread_function(void *arg)
 
         switch(res) {
         case E_MEMFULL:
-           // DEBUG("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
+           DEBUG("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
             __sync_fetch_and_add(mem_full, 1);
             continue;
 
         case E_FOUND:
-            // DEBUG("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
-            __sync_fetch_and_add(failed_insertions, 1);
+            DEBUG("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
+            __sync_fetch_and_add(duplicate_insertions, 1);
             continue;
 
         case E_RETRY:
             DEBUG("failed to insert %lu, retry!\n", freelist_get_nuber_elements());
+            __sync_fetch_and_add(retry_insert, 1);
             continue;
         }
 
         if(hashtable_find(targs->keys[key_index], data_read) == E_NOTFOUND) {
             DEBUG("key not found!\n");
+            __sync_fetch_and_add(notfound_insert, 1);
             continue;
         }
 
         if(memcmp(targs->data[data_index], data_read, DATA_SIZE)) {
             DEBUG("key: %s added: [%s], found: [%s]\n", targs->keys[key_index], targs->data[data_index], data_read);
+            __sync_fetch_and_add(changed_insert, 1);
+            continue;
         }
 
         hashtable_delete(targs->keys[key_index]);
-
-        // printf("succes!!!\n");
     }
 
     pthread_exit(NULL);
@@ -100,10 +111,18 @@ void print_statistics(struct timeval start, struct timeval end)
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
     double throughput = *total_insertions / elapsed;
 
+    printf(" *Total_insertions: %lu\n", *total_insertions);
+    printf("Mem_full: %lu\n", *mem_full);
+    printf("Duplicated insertions: %lu\n", *duplicate_insertions);
+    printf("Not found insertions: %lu\n", *notfound_insert);
+    printf("Changed insertions: %lu\n", *changed_insert);
+    printf("Retry insertions: %lu\n", *retry_insert);
+
+
     printf("Total time taken: %.2f seconds\n", elapsed);
     printf("Throughput: %.2f operations/second\n", throughput);
-    printf("Failed insertions: %lu out of %lu\n", *failed_insertions, *total_insertions);
-    printf("mem_full: %lu\n", *mem_full);
+
+
 }
 
 
