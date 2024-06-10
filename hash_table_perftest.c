@@ -1,0 +1,215 @@
+#include "hash_table.h"
+#include "freelist.h"
+
+#include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <getopt.h>
+
+#define TEST_ITERATIONS 100000000UL
+#define HASH_TABLE_SIZE 2000000UL
+#define NUM_THREADS 32
+
+typedef struct {
+    size_t num_keys;
+    size_t num_insertions;
+    uint8_t **keys;
+    uint8_t **data;
+} thread_args_t;
+
+static long unsigned int _failed_insertions = 0;
+static long unsigned int *failed_insertions = &_failed_insertions;
+
+static long unsigned int _total_insertions = 0;
+static long unsigned int *total_insertions = &_total_insertions;
+
+static long unsigned int _mem_full = 0;
+static long unsigned int *mem_full = &_mem_full;
+
+
+void *thread_function(void *arg)
+{
+
+    thread_args_t *targs = (thread_args_t *)arg;
+    uint8_t data_read[DATA_SIZE];
+
+    for (size_t i = 0; i < targs->num_insertions; i++) {
+        size_t key_index = rand() % targs->num_keys;
+        size_t data_index = rand() % targs->num_keys;
+
+        __sync_fetch_and_add(total_insertions, 1);
+
+        printf("key_index: %lu\n", key_index);
+
+        int res = hashtable_insert(targs->keys[key_index], targs->data[data_index]);
+
+        if(res == -1) {
+            printf("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
+            __sync_fetch_and_add(mem_full, 1);
+            continue;
+        } else if(res == 0){
+            hashtable_delete(targs->keys[key_index]);
+
+            res = hashtable_insert(targs->keys[key_index], targs->data[data_index]);
+
+            if(res == 0) {
+                // printf("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
+                __sync_fetch_and_add(failed_insertions, 1);
+            }
+
+            continue;
+        }
+
+        if(!hashtable_find(targs->keys[key_index], data_read)) {
+            // printf("key not found!\n");
+            continue;
+        }
+
+        if(memcmp(targs->data[data_index], data_read, DATA_SIZE)) {
+            printf("key: %s added: [%s], found: [%s]\n", targs->keys[key_index], targs->data[data_index], data_read);
+        }
+
+        hashtable_delete(targs->keys[key_index]);
+
+        // printf("succes!!!\n");
+    }
+
+    pthread_exit(NULL);
+}
+
+void print_statistics(struct timeval start, struct timeval end)
+{
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
+    double throughput = *total_insertions / elapsed;
+
+    printf("Total time taken: %.2f seconds\n", elapsed);
+    printf("Throughput: %.2f operations/second\n", throughput);
+    printf("Failed insertions: %lu out of %lu\n", *failed_insertions, *total_insertions);
+    printf("mem_full: %lu\n", *mem_full);
+}
+
+
+int main(int argc, char **argv)
+{
+    pthread_t *threads;
+    int        num_threads = NUM_THREADS;
+    struct     timeval start, end;
+    size_t     num_keys = HASH_TABLE_SIZE;
+    size_t     table_size = HASH_TABLE_SIZE;
+    size_t     num_insertions = TEST_ITERATIONS;
+    double     prefill_ratio = 0.75;
+
+    int opt;
+    while ((opt = getopt(argc, argv, "t:k:s:i:p:")) != -1) {
+        switch (opt) {
+            case 't':
+                num_threads = atoi(optarg);
+                break;
+
+            case 'k':
+                num_keys = atoi(optarg);
+                break;
+
+            case 's':
+                table_size = atoi(optarg);
+                break;
+
+            case 'i':
+                num_insertions = atoi(optarg);
+                break;
+
+            case 'p':
+                prefill_ratio = atof(optarg);
+                break;
+
+            default:
+                fprintf(stderr, "Usage: %s [-t num_threads] [-k num_keys] [-s table_size] [-i num_insertions] [-p prefill_ratio]\n", argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    srand(time(NULL));
+
+    printf("hash table size: %lu elements, key size: %d, data size: %d\n",
+            table_size, KEY_SIZE, DATA_SIZE);
+
+    if(!freelist_init(sizeof(node_t), table_size * 2)) {
+        printf("failed to initialize freelist\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(!hashtable_init(table_size)) {
+        printf("failed to initialize hashtable\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Generate random keys
+    uint8_t **keys = (uint8_t **)malloc(num_keys * sizeof(uint8_t *));
+    uint8_t **data = (uint8_t **)malloc(num_keys * sizeof(uint8_t *));
+    for (size_t i = 0; i < num_keys; i++) {
+        keys[i] = (uint8_t *)malloc(KEY_SIZE);
+
+        data[i] = (uint8_t *)malloc(DATA_SIZE);
+        for (size_t j = 0; j < KEY_SIZE; j++) {
+            keys[i][j] = rand() % 256;
+        }
+
+        for (size_t j = 0; j < DATA_SIZE; j++) {
+            data[i][j] = rand() % 256;
+        }
+    }
+
+    printf("start prefill %lu elements...\n", (size_t)prefill_ratio * table_size);
+
+    for(size_t j = 0; j < table_size * prefill_ratio; j++) {
+        size_t key_index = rand() % num_keys;
+        size_t data_index = rand() % num_keys;
+
+        if(hashtable_insert(keys[key_index], data[data_index]) == -1) {
+            printf("failed to insert %lu\n!", freelist_get_nuber_elements());
+            return -1;
+        }
+    }
+
+    printf("prefill done!\n");
+
+    threads = malloc(num_threads * sizeof(pthread_t));
+    thread_args_t thread_args;
+
+    if(!threads) {
+        printf("failed to create treads\n");
+        exit(EXIT_FAILURE);
+    }
+
+    gettimeofday(&start, NULL);
+    for (int i = 0; i < num_threads; ++i) {
+        thread_args.num_keys = num_keys;
+        thread_args.num_insertions = num_insertions;
+        thread_args.keys = keys;
+        thread_args.data = data;
+
+        if(pthread_create(&threads[i], NULL, thread_function, &thread_args) != 0) {
+            fprintf(stderr, "Error creating thread %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (int i = 0; i < num_threads; ++i) {
+        pthread_join(threads[i], NULL);
+    }
+
+    gettimeofday(&end, NULL);
+
+    print_statistics(start, end);
+
+    printf("test done!\n");
+
+    hash_table_destroy();
+    freelist_destroy();
+
+    exit(EXIT_SUCCESS);
+}
