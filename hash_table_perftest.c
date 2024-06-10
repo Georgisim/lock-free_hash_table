@@ -111,7 +111,7 @@ void print_statistics(struct timeval start, struct timeval end)
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
     double throughput = *total_insertions / elapsed;
 
-    printf(" *Total_insertions: %lu\n", *total_insertions);
+    printf("Total_insertions: %lu\n", *total_insertions);
     printf("Mem_full: %lu\n", *mem_full);
     printf("Duplicated insertions: %lu\n", *duplicate_insertions);
     printf("Not found insertions: %lu\n", *notfound_insert);
