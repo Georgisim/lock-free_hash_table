@@ -25,11 +25,17 @@ typedef struct node_s {
     uint8_t data[DATA_SIZE];
 } node_t;
 
+typedef enum {
+    E_FOUND,
+    E_NOTFOUND,
+    E_MEMFULL,
+    E_RETRY
+} found_t;
 
 bool hashtable_init(size_t table_size);
 void hash_table_destroy(void);
-extern bool hashtable_find(const uint8_t *key, uint8_t *data);
-extern int hashtable_insert(const uint8_t *key, uint8_t *data);
+extern found_t hashtable_find(const uint8_t *key, uint8_t *data);
+extern found_t hashtable_insert(const uint8_t *key, uint8_t *data);
 extern bool hashtable_delete(const uint8_t *key);
 
 #endif

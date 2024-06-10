@@ -43,36 +43,42 @@ void *thread_function(void *arg)
 {
 
     thread_args_t *targs = (thread_args_t *)arg;
-    uint8_t data_read[DATA_SIZE];
 
+    uint8_t data_read[DATA_SIZE];
     for (size_t i = 0; i < targs->num_insertions; i++) {
         size_t key_index = rand() % targs->num_keys;
         size_t data_index = rand() % targs->num_keys;
 
         __sync_fetch_and_add(total_insertions, 1);
 
-
-        if(hashtable_find(targs->keys[key_index], data_read)) {
+#if 1
+        if(hashtable_find(targs->keys[key_index], data_read) == E_FOUND) {
             //printf("found key:[%s] data:[%s], deleting\n", targs->keys[key_index], data_read);
 
             hashtable_delete(targs->keys[key_index]);
         }
-
+#endif
         // printf("insert: key:[%s], data[%s]\n", targs->keys[key_index], targs->data[data_index]);
 
         int res = hashtable_insert(targs->keys[key_index], targs->data[data_index]);
 
-        if(res == -1) {
-            DEBUG("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
+        switch(res) {
+        case E_MEMFULL:
+           // DEBUG("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
             __sync_fetch_and_add(mem_full, 1);
             continue;
-        } else if(res == 1) {
-            DEBUG("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
+
+        case E_FOUND:
+            // DEBUG("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
             __sync_fetch_and_add(failed_insertions, 1);
+            continue;
+
+        case E_RETRY:
+            DEBUG("failed to insert %lu, retry!\n", freelist_get_nuber_elements());
             continue;
         }
 
-        if(!hashtable_find(targs->keys[key_index], data_read)) {
+        if(hashtable_find(targs->keys[key_index], data_read) == E_NOTFOUND) {
             DEBUG("key not found!\n");
             continue;
         }
@@ -194,9 +200,9 @@ int main(int argc, char **argv)
         data[i][DATA_SIZE - 1] = '\0';
     }
 
-    printf("start prefill %lu elements...\n", (size_t)prefill_ratio * table_size);
+    printf("start prefill %lu elements...\n", (size_t)(prefill_ratio * table_size));
 
-    for(size_t j = 0; j < table_size * prefill_ratio; j++) {
+    for(size_t j = 0; j < (size_t)(table_size * prefill_ratio); j++) {
         size_t key_index = rand() % num_keys;
         size_t data_index = rand() % num_keys;
 
@@ -237,7 +243,7 @@ int main(int argc, char **argv)
 
     print_statistics(start, end);
 
-    printf("test done!\n");
+    printf("test done!\n\n");
 
     hash_table_destroy();
     freelist_destroy();

@@ -62,7 +62,7 @@ bool hashtable_init(size_t table_size)
 
 
 
-static bool find(const uint8_t *key, uint8_t *data,
+static found_t find(const uint8_t *key, uint8_t *data,
         mtag_ptr_t *head, mtag_ptr_t **prev,
         mtag_ptr_t *pmark_cur_ptag, mtag_ptr_t *cmark_next_ctag)
 {
@@ -76,7 +76,7 @@ try_again:
 
     while (true) { // D2:
         if(GET_PTR(pmark_cur_ptag->ptr) == NULL) {
-            return false;
+            return E_NOTFOUND;
         }
 
         cmark_next_ctag->ptr = GET_PTR(pmark_cur_ptag->ptr)->next.ptr; // D3:
@@ -88,8 +88,7 @@ try_again:
 
             DEBUG((*prev)->tag, pmark_cur_ptag->tag);
 
-            // goto try_again;
-            return false;
+            return E_RETRY;
         }
 
         if(!IS_MARKED_PTR(cmark_next_ctag->ptr)) {
@@ -102,9 +101,9 @@ try_again:
                         memcpy(data, GET_PTR(pmark_cur_ptag->ptr)->data, DATA_SIZE);
                     }
 
-                    return true;
+                    return E_FOUND;
                 } else {
-                    return false;
+                    return E_NOTFOUND;
                 };
             }
 
@@ -127,7 +126,7 @@ try_again:
                 freelist_free(GET_PTR(pmark_cur_ptag->ptr));
                 cmark_next_ctag->tag = pmark_cur_ptag->tag + 1;
 
-                return true;
+                return E_FOUND;
             } else {
                 DEBUG((*prev)->tag, pmark_cur_ptag->tag);
                 goto try_again;
@@ -140,7 +139,7 @@ try_again:
 }
 
 // Find a key
-bool hashtable_find(const uint8_t *key, uint8_t *data)
+found_t hashtable_find(const uint8_t *key, uint8_t *data)
 {
     mtag_ptr_t *head, *prev, pmark_cur_ptag, cmark_next_ctag;
 
@@ -151,9 +150,10 @@ bool hashtable_find(const uint8_t *key, uint8_t *data)
     return find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
 }
 
-int hashtable_insert(const uint8_t *key, uint8_t *data)
+found_t hashtable_insert(const uint8_t *key, uint8_t *data)
 {
-    node_t *node;
+    node_t  *node;
+    found_t  res;
     mtag_ptr_t *prev, *head, pmark_cur_ptag, cmark_next_ctag;
 
     uint64_t index = hash_function(key, KEY_SIZE) % g_hash_table.table_size;
@@ -162,7 +162,7 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
 
     node = freelist_allocate();
     if(node == NULL) {
-        return -1;
+        return E_MEMFULL;
     }
 
     memcpy(node->key, key, KEY_SIZE);
@@ -170,9 +170,11 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
 
     while (true) {
         // Find the appropriate position to insert
-        if (find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
-            return 0;
+        res = find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag);
+        if(res != E_NOTFOUND) { // A1:
+            return res;
         }
+
         // Prepare the node to be inserted
         node->next.ptr = GET_PTR(pmark_cur_ptag.ptr); // A2:
         node->next.tag = 0;
@@ -190,12 +192,10 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
 
         // Attempt to insert the new node into the linked list
         if (atomic_compare_exchange_weak(prev, &expected_cur, new_next)) {
-            return 0;
+            return E_NOTFOUND;
         }
         DEBUG(prev->tag, pmark_cur_ptag.tag);
     }
-
-    return 1;
 }
 
 bool hashtable_delete(const uint8_t *key)
@@ -207,7 +207,7 @@ bool hashtable_delete(const uint8_t *key)
 
     while(true) { // B1:
         if(!find(key, NULL, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) {
-            return false;
+            return E_NOTFOUND;
         }
 
         {

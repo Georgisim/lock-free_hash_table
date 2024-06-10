@@ -44,11 +44,11 @@ void *thread_function(void *arg)
         data_read[DATA_SIZE] = 0;
 
         int res = hashtable_insert(key, data);
-        if(res == -1) {
+        if(res == E_MEMFULL) {
             __sync_fetch_and_add(mem_full, 1);
             printf("failed to insert %lu, memory full\n!", freelist_get_nuber_elements());
             continue;
-        } else if(res == 1){
+        } else if(res == E_NOTFOUND){
             // printf("failed to insert %lu, already there\n!", freelist_get_nuber_elements());
             __sync_fetch_and_add(failed_insertions, 1);
             hashtable_delete(key);
