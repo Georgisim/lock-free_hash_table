@@ -12,7 +12,7 @@ CFLAGS := ${cflags.${BUILD}} ${cflags.common}
 
 .PHONY : all
 
-all: hash_table_test  hash_table_preftest freelist_test
+all: hash_table_test  hash_table_perftest freelist_test
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -23,7 +23,7 @@ freelist_test: freelist.o freelist_test.o
 hash_table_test: freelist.o hash_table.o hash_table_test.o
 	$(CC) -o $@ $^ $(CFLAGS) -latomic
 
-hash_table_preftest: freelist.o hash_table.o hash_table_preftest.o
+hash_table_perftest: freelist.o hash_table.o hash_table_perftest.o
 	$(CC) -o $@ $^ $(CFLAGS) -latomic
 
 clean:

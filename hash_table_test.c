@@ -12,6 +12,15 @@
 #define HASH_TABLE_SIZE 2000000UL
 #define NUM_THREADS 32
 
+static long unsigned int _failed_insertions = 0;
+static long unsigned int *failed_insertions = &_failed_insertions;
+
+static long unsigned int _total_insertions = 0;
+static long unsigned int *total_insertions = &_total_insertions;
+
+static long unsigned int _mem_full = 0;
+static long unsigned int *mem_full = &_mem_full;
+
 void *thread_function(void *arg)
 {
     uint8_t key[KEY_SIZE];
@@ -29,15 +38,19 @@ void *thread_function(void *arg)
 
         }
 
+        __sync_fetch_and_add(total_insertions, 1);
+
         data[DATA_SIZE] = 0;
         data_read[DATA_SIZE] = 0;
 
         int res = hashtable_insert(key, data);
         if(res == -1) {
+            __sync_fetch_and_add(mem_full, 1);
             printf("failed to insert %lu, memory full\n!", freelist_get_nuber_elements());
             continue;
-        } else if(res == 0){
+        } else if(res == 1){
             // printf("failed to insert %lu, already there\n!", freelist_get_nuber_elements());
+            __sync_fetch_and_add(failed_insertions, 1);
             hashtable_delete(key);
             continue;
         }
@@ -67,6 +80,7 @@ void print_statistics(struct timeval start, struct timeval end,
 
     printf("Total time taken: %.2f seconds\n", elapsed);
     printf("Throughput: %.2f operations/second\n", throughput);
+    printf("Failed insertions: %lu\n", *failed_insertions);
 }
 
 

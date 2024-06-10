@@ -171,7 +171,7 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
     while (true) {
         // Find the appropriate position to insert
         if (find(key, data, head, &prev, &pmark_cur_ptag, &cmark_next_ctag)) { // A1:
-            return false;
+            return 0;
         }
         // Prepare the node to be inserted
         node->next.ptr = GET_PTR(pmark_cur_ptag.ptr); // A2:
@@ -194,7 +194,6 @@ int hashtable_insert(const uint8_t *key, uint8_t *data)
         }
         DEBUG(prev->tag, pmark_cur_ptag.tag);
     }
-
 
     return 1;
 }

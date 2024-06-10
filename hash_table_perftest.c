@@ -14,6 +14,14 @@
 #define HASH_TABLE_SIZE 2000000UL
 #define NUM_THREADS 32
 
+#ifdef _DEBUG
+    #define DEBUG(...) fprintf (stderr, __VA_ARGS__)
+#else
+    #define DEBUG(...)
+#endif
+
+
+
 typedef struct {
     size_t num_keys;
     size_t num_insertions;
@@ -43,34 +51,34 @@ void *thread_function(void *arg)
 
         __sync_fetch_and_add(total_insertions, 1);
 
-        printf("key_index: %lu\n", key_index);
+
+        if(hashtable_find(targs->keys[key_index], data_read)) {
+            //printf("found key:[%s] data:[%s], deleting\n", targs->keys[key_index], data_read);
+
+            hashtable_delete(targs->keys[key_index]);
+        }
+
+        // printf("insert: key:[%s], data[%s]\n", targs->keys[key_index], targs->data[data_index]);
 
         int res = hashtable_insert(targs->keys[key_index], targs->data[data_index]);
 
         if(res == -1) {
-            printf("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
+            DEBUG("failed to insert (%lu elements occupied), memory full!\n", freelist_get_nuber_elements());
             __sync_fetch_and_add(mem_full, 1);
             continue;
-        } else if(res == 0){
-            hashtable_delete(targs->keys[key_index]);
-
-            res = hashtable_insert(targs->keys[key_index], targs->data[data_index]);
-
-            if(res == 0) {
-                // printf("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
-                __sync_fetch_and_add(failed_insertions, 1);
-            }
-
+        } else if(res == 1) {
+            DEBUG("failed to insert %lu, already there!\n", freelist_get_nuber_elements());
+            __sync_fetch_and_add(failed_insertions, 1);
             continue;
         }
 
         if(!hashtable_find(targs->keys[key_index], data_read)) {
-            // printf("key not found!\n");
+            DEBUG("key not found!\n");
             continue;
         }
 
         if(memcmp(targs->data[data_index], data_read, DATA_SIZE)) {
-            printf("key: %s added: [%s], found: [%s]\n", targs->keys[key_index], targs->data[data_index], data_read);
+            DEBUG("key: %s added: [%s], found: [%s]\n", targs->keys[key_index], targs->data[data_index], data_read);
         }
 
         hashtable_delete(targs->keys[key_index]);
@@ -137,7 +145,7 @@ int main(int argc, char **argv)
     printf("hash table size: %lu elements, key size: %d, data size: %d\n",
             table_size, KEY_SIZE, DATA_SIZE);
 
-    if(!freelist_init(sizeof(node_t), table_size * 2)) {
+    if(!freelist_init(sizeof(node_t), table_size)) {
         printf("failed to initialize freelist\n");
         exit(EXIT_FAILURE);
     }
@@ -149,18 +157,41 @@ int main(int argc, char **argv)
 
     // Generate random keys
     uint8_t **keys = (uint8_t **)malloc(num_keys * sizeof(uint8_t *));
+    if(keys == NULL) {
+        printf("malloc failed!\n");
+        exit(EXIT_FAILURE);
+    }
+
     uint8_t **data = (uint8_t **)malloc(num_keys * sizeof(uint8_t *));
+    if(data == NULL) {
+        printf("malloc failed!\n");
+        exit(EXIT_FAILURE);
+    }
+
     for (size_t i = 0; i < num_keys; i++) {
         keys[i] = (uint8_t *)malloc(KEY_SIZE);
+        if(keys[i] == NULL) {
+            printf("malloc failed!\n");
+            exit(EXIT_FAILURE);
+        }
 
         data[i] = (uint8_t *)malloc(DATA_SIZE);
-        for (size_t j = 0; j < KEY_SIZE; j++) {
-            keys[i][j] = rand() % 256;
+        if(data[i] == NULL) {
+            printf("malloc failed!\n");
+            exit(EXIT_FAILURE);
         }
 
-        for (size_t j = 0; j < DATA_SIZE; j++) {
-            data[i][j] = rand() % 256;
+        for (size_t j = 0; j < KEY_SIZE - 1; j++) {
+            keys[i][j] = 'a' + rand() % 26;
         }
+
+        keys[i][KEY_SIZE - 1] = '\0';
+
+        for (size_t j = 0; j < DATA_SIZE; j++) {
+            data[i][j] = 'A' + rand() % 26;
+        }
+
+        data[i][DATA_SIZE - 1] = '\0';
     }
 
     printf("start prefill %lu elements...\n", (size_t)prefill_ratio * table_size);
