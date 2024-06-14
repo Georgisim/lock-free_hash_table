@@ -31,8 +31,6 @@ void *thread_function(void *arg)
             key[i] =  rand() % 256;
         }
 
-        key[DATA_SIZE] = 0;
-
         for (size_t i = 0; i < DATA_SIZE; i++) {
             data[i] =  rand() % 256;
 
@@ -40,8 +38,6 @@ void *thread_function(void *arg)
 
         __sync_fetch_and_add(total_insertions, 1);
 
-        data[DATA_SIZE] = 0;
-        data_read[DATA_SIZE] = 0;
 
         int res = hashtable_insert(key, data);
         if(res == E_MEMFULL) {
