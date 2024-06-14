@@ -126,7 +126,6 @@ try_again:
                 freelist_free(GET_PTR(pmark_cur_ptag->ptr));
                 cmark_next_ctag->tag = pmark_cur_ptag->tag + 1;
 
-                return E_FOUND;
             } else {
                 DEBUG((*prev)->tag, pmark_cur_ptag->tag);
                 goto try_again;
