@@ -2,19 +2,21 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Example usage
 typedef struct {
     char data[48];
 } MyObject;
 
-int main() {    
+int main()
+{
     size_t object_size = sizeof(MyObject);  // Size of MyObject is 48 bytes
-    size_t capacity = 100;  // Number of objects
+    size_t capacity = 1000;  // Number of objects
 
-    if (freelist_init(object_size, capacity) != 0) {
+    if (freelist_init(object_size, capacity) == false) {
         fprintf(stderr, "Failed to initialize freelist\n");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     // Allocate objects
@@ -23,7 +25,7 @@ int main() {
         objects[i] = (MyObject*)freelist_allocate();
         if (objects[i] == NULL) {
             fprintf(stderr, "Failed to allocate object %zu\n", i);
-            break;
+            exit(EXIT_FAILURE);
         }
         
         memset(objects[i], 'a' + i%20  , 47);
@@ -45,5 +47,5 @@ int main() {
     // Clean up the freelist
     freelist_destroy();
 
-    return 0;
+    exit(EXIT_SUCCESS);
 }
