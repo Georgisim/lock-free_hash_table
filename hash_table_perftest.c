@@ -141,6 +141,11 @@ int main(int argc, char **argv)
         switch (opt) {
             case 't':
                 num_threads = atoi(optarg);
+                if(num_threads == 0) {
+                    fprintf(stderr, "num_threads can't be zero\n");
+                    exit(EXIT_FAILURE);
+                }
+
                 break;
 
             case 'k':
@@ -149,6 +154,10 @@ int main(int argc, char **argv)
 
             case 's':
                 table_size = atoi(optarg);
+                if(table_size == 0) {
+                    fprintf(stderr, "table_size can't be zero\n");
+                    exit(EXIT_FAILURE);
+                }
                 break;
 
             case 'i':
@@ -157,6 +166,10 @@ int main(int argc, char **argv)
 
             case 'p':
                 prefill_ratio = atof(optarg);
+                if(prefill_ratio > 1) {
+                    fprintf(stderr, "prefill_ratio can't be greater than one\n");
+                    exit(EXIT_FAILURE);
+                }
                 break;
 
             default:
