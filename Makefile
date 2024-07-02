@@ -7,7 +7,7 @@ BUILD := debug
 
 cflags.common := 
 cflags.debug := -g -O0 -Wall -D_DEBUG
-cflags.release := -O2 -Wall
+cflags.release := -O3 -Wall
 CFLAGS := ${cflags.${BUILD}} ${cflags.common}
 
 .PHONY : all
