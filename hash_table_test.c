@@ -26,7 +26,7 @@ void *thread_function(void *arg)
     uint8_t key[KEY_SIZE];
     uint8_t data[DATA_SIZE + 1], data_read[DATA_SIZE + 1];
 
-    for(int i; i < TEST_ITERATIONS; i++) {
+    for(int num_iter = 0; num_iter < TEST_ITERATIONS; num_iter++) {
         for (size_t i = 0; i < KEY_SIZE; i++) {
             key[i] =  rand() % 256;
         }
